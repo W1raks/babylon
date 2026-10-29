@@ -119,7 +119,7 @@ python run_babylon.py
 
 **Сборка:** `build.bat` → `dist\Babylon\Babylon.exe`. **Проверки:** `python -m pytest tests`.
 
-Выпуски собирает GitHub Actions: тег `vX.Y.Z` → проверки на Windows → архив `Babylon-X.Y.Z-win64.zip` в разделе Releases.
+Выпуски собирает GitHub Actions: новая версия в `babylon/config.py` (или тег `vX.Y.Z`) → проверки на Windows → архив `Babylon-X.Y.Z-win64.zip` в разделе Releases.
 
 ## Лицензия
 

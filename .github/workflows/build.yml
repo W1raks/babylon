@@ -1,4 +1,4 @@
-# Проверки и сборка Вавилона на Windows. Тег vX.Y.Z → выпуск с архивом Babylon-X.Y.Z-win64.zip.
+# Проверки и сборка Вавилона на Windows. Новая версия в main (или тег vX.Y.Z) → выпуск с архивом Babylon-X.Y.Z-win64.zip.
 name: build
 
 on:
@@ -65,11 +65,22 @@ jobs:
       - name: Архив с номером версии
         id: pack
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $v = (Get-Content build\version.txt).Trim()
           if ($env:GITHUB_REF -like 'refs/tags/v*' -and $env:GITHUB_REF_NAME -ne "v$v") { throw "тег $env:GITHUB_REF_NAME не совпадает с версией $v" }
           Compress-Archive -Path dist\Babylon -DestinationPath "Babylon-$v-win64.zip"
+          # выпуск: по тегу или когда в main пришла версия, которой ещё нет в Releases
+          $rel = $env:GITHUB_REF -like 'refs/tags/v*'
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -eq 'refs/heads/main') {
+            gh release view "v$v" --repo $env:GITHUB_REPOSITORY *> $null
+            $rel = $LASTEXITCODE -ne 0
+            $global:LASTEXITCODE = 0
+          }
           "version=$v" >> $env:GITHUB_OUTPUT
+          "release=$($rel.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "выпуск v${v}: $rel"
       - name: Обновление с прошлого выпуска кнопкой
         timeout-minutes: 4
         shell: pwsh
@@ -98,7 +109,7 @@ jobs:
           path: Babylon-${{ steps.pack.outputs.version }}-win64.zip
           retention-days: 30
       - name: Что нового (из CHANGELOG.md)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.pack.outputs.release == 'true'
         shell: python
         run: |
           import re
@@ -108,12 +119,14 @@ jobs:
           notes = (m.group(1).strip() if m else "") + "\n\n**Установка:** скачайте архив ниже, распакуйте и запустите `Babylon\\Babylon.exe`. Если Вавилон уже стоит — он сам предложит обновиться."
           open("release-notes.md", "w", encoding="utf-8").write(notes)
       - name: Ролик к выпуску
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.pack.outputs.release == 'true'
         run: Copy-Item docs\promo.mp4 Babylon-promo.mp4
       - name: Выпуск
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.pack.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.pack.outputs.version }}
+          target_commitish: ${{ github.sha }}
           name: Вавилон ${{ steps.pack.outputs.version }}
           body_path: release-notes.md
           files: |
