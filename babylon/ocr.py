@@ -67,6 +67,17 @@ def looks_russian(text: str) -> bool:
     return real / len(words) >= 0.4
 
 
+# Кириллица, которую русский OCR ставит вместо латинских букв того же вида
+_TWINS = str.maketrans("аеорсухкіјѕԁԝАВЕКМНОРСТХІЈЅ", "aeopcyxkijsdwABEKMHOPCTXIJS")
+
+
+def fix_twins(text: str) -> str:
+    """Строка не русская (английский текст прочитан русским OCR) — вернуть латинские буквы вместо двойников."""
+    if looks_russian(text) or not any("Ѐ" <= c <= "ӿ" for c in text):
+        return text
+    return text.translate(_TWINS)
+
+
 @dataclass
 class Line:
     """Строка текста на картинке и её рамка в пикселях (words — слова с рамками)."""
@@ -163,6 +174,12 @@ def read(bgra: bytes, width: int, height: int, lang: str) -> list[Line]:
     if lang in ("ja", "zh"):
         for ln in lines:
             ln.text = _ASIAN_SPACE.sub("", ln.text)
+    if lang == "ru":  # в Windows без английского OCR английские субтитры читает русский
+        for ln in lines:
+            fixed = fix_twins(ln.text)
+            if fixed != ln.text:
+                ln.text = fixed
+                ln.words = [(t.translate(_TWINS),) + tuple(rest) for t, *rest in ln.words]
     return lines
 
 

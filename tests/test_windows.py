@@ -192,7 +192,8 @@ class _Player:
         self.app.processEvents()
 
 
-def test_live_subtitles_speed(app):
+@pytest.mark.parametrize("recordable", [False, True])
+def test_live_subtitles_speed(app, recordable):
     """Полный путь на настоящем экране: фраза появилась → OCR → перевод → плашка. Печатаем скорость."""
     from PySide6.QtCore import QRect
     from babylon import live
@@ -228,10 +229,13 @@ def test_live_subtitles_speed(app):
     got = []
     subs.phrase.connect(lambda text, out, lines, ms: (got.append((time.perf_counter(), text, out, ms)),
                                                        ov.set_phrase(out, lines)))
-    ov.place(rect, screen)
-    bar.place(rect, screen)
+    ov.place(rect, screen, recordable)
+    bar.place(rect, screen, recordable)
     subs.start(rect, screen, "ru")
-    print("overlay covers original:", ov.cover)
+    print("overlay covers original:", ov.cover, "recordable:", recordable)
+    if recordable:  # видно на записи — значит, не поверх оригинала, иначе прочли бы свой перевод
+        assert not ov.cover and ov.geometry().top() > rect.bottom()
+    before = screen.grabWindow(0, 40, 360, 940, 260).toImage()
     results = []
     for phrase in ("Where are you going?", "It is late. Let's go home.", "I can't leave you here alone."):
         n = len(got)
@@ -246,9 +250,16 @@ def test_live_subtitles_speed(app):
         print(f"live: {phrase!r} -> {got[-1][2]!r} за {took:.0f} мс (OCR {subs.ocr_ms} мс, язык {subs.lang})")
         assert "going" in got[-1][1] or "late" in got[-1][1] or "alone" in got[-1][1]
         pump(app, 0.4)
-    ov.grab().save(os.path.join(os.environ.get("BABYLON_SHOTS", "."), "live_overlay_real.png"))
-    full = screen.grabWindow(0, 40, 360, 940, 220)
-    full.save(os.path.join(os.environ.get("BABYLON_SHOTS", "."), "live_screen_real.png"))
+    tag = "_rec" if recordable else ""
+    ov.grab().save(os.path.join(os.environ.get("BABYLON_SHOTS", "."), f"live_overlay_real{tag}.png"))
+    full = screen.grabWindow(0, 40, 360, 940, 260)
+    full.save(os.path.join(os.environ.get("BABYLON_SHOTS", "."), f"live_screen_real{tag}.png"))
+    if recordable:  # плашка перевода под областью попала в снимок экрана: там изменились пиксели
+        img = full.toImage()
+        diff = sum(abs(img.pixelColor(x, y).lightness() - before.pixelColor(x, y).lightness()) > 40
+                   for x in range(0, img.width(), 4) for y in range(rect.bottom() - 360 + 4, img.height(), 2))
+        print("changed pixels under the region:", diff)
+        assert diff > 100, "плашки нет на снимке экрана"
     subs.stop()
     ov.close()
     bar.close()

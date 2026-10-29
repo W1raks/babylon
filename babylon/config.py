@@ -5,7 +5,7 @@ import sys
 import time
 
 APP = "Babylon"
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 OLD_APPS = ("Vavilon", "Tolmach")  # прежние имена: данные и автозапуск переносим
 
 DEFAULTS = {
@@ -42,6 +42,10 @@ DEFAULTS = {
     "subs_opacity": 86,      # плотность их плашки, %
     "subs_original": True,   # показывать оригинал мелко над переводом
     "subs_pos": "bottom",    # bottom / top
+    "live_bar": "full",      # панель живых субтитров: full / icon (значок) / hidden
+    "live_bar_pos": None,    # куда её передвинули [x, y]
+    "hear_bar": "full",      # панель перевода речи
+    "live_recordable": False,  # живые субтитры видно на записи экрана (плашка под оригиналом, а не поверх)
 }
 
 

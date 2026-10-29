@@ -197,6 +197,11 @@ def _model():
     return _IDENT or None
 
 
+def warm_up():
+    """Загрузить модель заранее (первая загрузка ~0,9 с) — чтобы первая фраза живых субтитров не ждала."""
+    _model()
+
+
 def _script(letters: list[str]) -> str | None:
     """Язык по письменности, где она однозначна."""
     n = len(letters)

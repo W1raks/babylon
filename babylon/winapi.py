@@ -110,13 +110,13 @@ def click_through(hwnd: int):
         | WS_EX_TOOLWINDOW)
 
 
-def exclude_from_capture(hwnd: int) -> bool:
+def exclude_from_capture(hwnd: int, on: bool = True) -> bool:
     """Скрыть окно от снимков экрана (Windows 10 2004+): тогда субтитры можно класть прямо на оригинал,
-    а распознавание всё равно видит исходный текст под ними."""
+    а распознавание всё равно видит исходный текст под ними. on=False — снова показывать в снимках и записи."""
     if not IS_WIN:
         return False
     user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
-    return bool(user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE))
+    return bool(user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE if on else 0))
 
 
 def key_down(vk: int) -> bool:

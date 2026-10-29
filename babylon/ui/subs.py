@@ -2,9 +2,10 @@
 
 Слой пропускает мышь насквозь (видео можно ставить на паузу как обычно) и скрыт от снимков экрана,
 поэтому плашка ложится прямо на оригинальные субтитры, а распознавание видит их под ней.
-Если Windows не умеет скрывать окно от снимков (старше 10 версии 2004), плашка встаёт под областью.
+Если Windows не умеет скрывать окно от снимков (старше 10 версии 2004) или включено «видно на записи экрана»,
+плашка встаёт под областью.
 """
-from PySide6.QtCore import QEasingCurve, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
@@ -34,14 +35,15 @@ class SubsOverlay(QWidget):
                                         easingCurve=QEasingCurve.Type.InQuad)
         self._flash.valueChanged.connect(lambda v: (setattr(self, "flash", v), self.update()))
 
-    def place(self, region: QRect, screen):
-        """Слой над полосой вокруг области (шире её: перевод бывает длиннее оригинала)."""
+    def place(self, region: QRect, screen, recordable=False):
+        """Слой над полосой вокруг области (шире её: перевод бывает длиннее оригинала).
+        recordable — слой попадает в запись экрана, поэтому не закрывает оригинал (иначе прочтём свой перевод)."""
         self.region = QRect(region)
         sg = screen.geometry()
         self.show()
         hwnd = int(self.winId())
         winapi.click_through(hwnd)
-        self.cover = winapi.exclude_from_capture(hwnd)
+        self.cover = winapi.exclude_from_capture(hwnd, not recordable) and not recordable
         pad = max(40, region.height())
         if self.cover:
             top, bottom = region.top() - pad, region.bottom() + pad
@@ -93,21 +95,124 @@ class SubsOverlay(QWidget):
             lens._paint_plate(p, self.block, self.out, self.width(), self.height())
 
 
-class LiveBar(GlassRoot):
-    """Панель над областью: язык перевода, скорость, стоп."""
+class FloatBar(GlassRoot):
+    """Панель субтитров, которую можно таскать, свернуть в значок-башню (щелчок — развернуть) и скрыть.
+    mode: full / icon / hidden. Подклассы кладут свои виджеты в layout из _body()."""
 
-    stop = Signal()
-    target_changed = Signal(str)
+    moved = Signal(QPointF)        # сдвиг во время перетаскивания
+    placed = Signal(QPoint)        # куда поставили (после перетаскивания)
+    mode_changed = Signal(str)
 
-    def __init__(self, target: str, opacity: int):
+    def __init__(self, opacity: int):
         super().__init__(radius=17)
         self.setWindowFlags(_TOP | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.opacity = max(88, opacity)
-        l = QHBoxLayout(self)
+        self.mode = "full"
+        self._press = self._drag = None
+        self._dragged = False
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.body = QWidget()
+        outer.addWidget(self.body)
+        self.mini = QLabel()
+        self.mini.setFixedSize(34, 34)
+        self.mini.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mini.setPixmap(theme.app_icon().pixmap(22, 22))
+        self.mini.setToolTip("Вавилон: нажмите, чтобы развернуть панель; потяните, чтобы передвинуть")
+        self.mini.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mini.hide()
+        outer.addWidget(self.mini)
+
+    def _body(self) -> QHBoxLayout:
+        l = QHBoxLayout(self.body)
         l.setContentsMargins(12, 4, 4, 4)
         l.setSpacing(8)
+        return l
+
+    def _tail_buttons(self, l: QHBoxLayout):
+        b = btn("", "icon", "minimize", theme.TEXT, "Свернуть в значок")
+        b.clicked.connect(lambda: self.set_mode("icon"))
+        l.addWidget(b)
+        b = btn("", "icon", "eye-off", theme.TEXT, "Скрыть панель (субтитры останутся; вернуть — меню значка в трее)")
+        b.clicked.connect(lambda: self.set_mode("hidden"))
+        l.addWidget(b)
+
+    def set_mode(self, mode: str, emit: bool = True):
+        if mode not in ("full", "icon", "hidden"):
+            mode = "full"
+        right = self.geometry().right() if self.isVisible() else None
+        self.mode = mode
+        self.body.setVisible(mode == "full")
+        self.mini.setVisible(mode == "icon")
+        self.radius = 17
+        self.adjustSize()
+        self.resize(self.sizeHint())
+        if right is not None:  # сворачиваем к правому краю: значок остаётся там, где были кнопки
+            self.move(right - self.width() + 1, self.y())
+        if mode == "hidden":
+            self.hide()
+        elif self.isHidden() and self._placed:
+            self._show()
+        self.update()
+        if emit:
+            self.mode_changed.emit(mode)
+
+    _placed = False
+
+    def _show(self):
+        self.show()
+        self.set_glass(self.opacity, glass.apply(self, popup=True))
+
+    def show_at(self, pos: QPoint, screen, mode: str):
+        """Показать в pos (если точка на этом экране), с режимом mode."""
+        self._placed = True
+        self.set_mode(mode, emit=False)
+        sg = screen.geometry()
+        x = min(max(sg.left() + 4, pos.x()), sg.right() - self.width() - 4)
+        y = min(max(sg.top() + 4, pos.y()), sg.bottom() - self.height() - 4)
+        self.move(x, y)
+        if mode != "hidden":
+            self._show()
+
+    # --- перетаскивание; у значка щелчок без сдвига разворачивает панель ---
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._press = e.globalPosition()
+            self._drag = e.globalPosition() - QPointF(self.pos())
+            self._dragged = False
+
+    def mouseMoveEvent(self, e):
+        if self._drag is None:
+            return
+        if not self._dragged and (e.globalPosition() - self._press).manhattanLength() < 4:
+            return
+        self._dragged = True
+        new = e.globalPosition() - self._drag
+        delta = new - QPointF(self.pos())
+        self.move(new.toPoint())
+        self.moved.emit(delta)
+
+    def mouseReleaseEvent(self, e):
+        if self._drag is None:
+            return
+        self._drag = None
+        if self._dragged:
+            self.placed.emit(self.pos())
+        elif self.mode == "icon":
+            self.set_mode("full")
+
+
+class LiveBar(FloatBar):
+    """Панель над областью: язык перевода, скорость, свернуть, скрыть, стоп."""
+
+    stop = Signal()
+    target_changed = Signal(str)
+
+    def __init__(self, target: str, opacity: int):
+        super().__init__(opacity)
+        l = self._body()
         dot = QLabel("●")
         dot.setStyleSheet(f"color: {theme.ACCENT}; font-size: 9pt;")
         l.addWidget(dot)
@@ -125,27 +230,33 @@ class LiveBar(GlassRoot):
         self.speed.setMinimumWidth(54)
         self.speed.setAlignment(Qt.AlignmentFlag.AlignCenter)
         l.addWidget(self.speed)
+        self._tail_buttons(l)
         b = btn("", "icon", "close", theme.TEXT, "Остановить субтитры")
         b.clicked.connect(self.stop)
         l.addWidget(b)
 
-    def place(self, region: QRect, screen):
-        self.adjustSize()
-        sg = screen.geometry()
-        x = min(max(sg.left() + 4, region.right() - self.width()), sg.right() - self.width() - 4)
-        y = region.top() - self.height() - 8
-        if y < sg.top() + 4:
-            y = region.bottom() + 8
-        self.move(x, y)
-        self.show()
-        self.set_glass(self.opacity, glass.apply(self, popup=True))
-        winapi.exclude_from_capture(int(self.winId()))
-        self.src_lbl.setText("слушаю экран")
+    def place(self, region: QRect, screen, recordable=False, mode="full", pos=None):
+        """Над областью справа (или туда, куда панель передвинули в прошлый раз — pos)."""
+        self.src_lbl.setText("читаю экран")
         self.speed.setText("")
+        self.set_mode("full", emit=False)
+        self.adjustSize()
+        if pos is None or not screen.geometry().contains(pos):
+            sg = screen.geometry()
+            y = region.top() - self.height() - 8
+            if y < sg.top() + 4:
+                y = region.bottom() + 8
+            pos = QPoint(region.right() - self.width(), y)
+        self.show_at(pos, screen, mode)
+        winapi.exclude_from_capture(int(self.winId()), not recordable)
 
     def set_lang(self, src: str):
         self.src_lbl.setText(name(src).lower() if src else "субтитры")
-        self.adjustSize()
+        self._fit()
+
+    def _fit(self):
+        if self.mode == "full":
+            self.adjustSize()
 
     def set_speed(self, ms: int, ocr_ms: int):
         self.speed.setText(f"{ms / 1000:.2f} с")
@@ -153,7 +264,7 @@ class LiveBar(GlassRoot):
 
     def set_status(self, text: str):
         self.src_lbl.setText(text)
-        self.adjustSize()
+        self._fit()
 
 
 # ---------------- субтитры из речи (звук компьютера или микрофон) ----------------
@@ -246,27 +357,19 @@ class SpeechOverlay(QWidget):
         p.drawText(QRectF(box.left() + px * 0.7, y, w - px * 1.4, rb.height() + 2), flags, self.out)
 
 
-class HearBar(GlassRoot):
-    """Панель субтитров речи: откуда звук, на какой язык, озвучка, окно разговора, стоп. Её можно таскать —
-    вместе с ней двигаются и субтитры."""
+class HearBar(FloatBar):
+    """Панель субтитров речи: откуда звук, на какой язык, озвучка, окно разговора, свернуть, скрыть, стоп.
+    Её можно таскать — вместе с ней двигаются и субтитры."""
 
     stop = Signal()
     target_changed = Signal(str)
     voice_toggled = Signal(bool)
     open_window = Signal()
-    moved = Signal(QPointF)
 
     def __init__(self, target: str, opacity: int, voice: bool):
-        super().__init__(radius=17)
-        self.setWindowFlags(_TOP | Qt.WindowType.WindowDoesNotAcceptFocus)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.opacity = max(88, opacity)
-        self._drag = None
+        super().__init__(opacity)
         self.lvl = 0.0
-        l = QHBoxLayout(self)
-        l.setContentsMargins(12, 4, 4, 4)
-        l.setSpacing(8)
+        l = self._body()
         self.dot = QLabel("●")
         l.addWidget(self.dot)
         self.src_lbl = QLabel("звук компьютера")
@@ -286,6 +389,7 @@ class HearBar(GlassRoot):
         b = btn("", "icon", "expand", theme.TEXT, "Открыть разговор целиком")
         b.clicked.connect(self.open_window)
         l.addWidget(b)
+        self._tail_buttons(l)
         b = btn("", "icon", "close", theme.TEXT, "Остановить")
         b.clicked.connect(self.stop)
         l.addWidget(b)
@@ -298,25 +402,11 @@ class HearBar(GlassRoot):
 
     def set_source(self, text: str):
         self.src_lbl.setText(text)
-        self.adjustSize()
+        if self.mode == "full":
+            self.adjustSize()
 
-    def place_near(self, overlay: QWidget):
+    def place_near(self, overlay: QWidget, mode="full"):
+        self.set_mode("full", emit=False)
         self.adjustSize()
         g = overlay.geometry()
-        self.move(g.right() - self.width(), g.top() - self.height() - 6)
-        self.show()
-        self.set_glass(self.opacity, glass.apply(self, popup=True))
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton:
-            self._drag = e.globalPosition() - QPointF(self.pos())
-
-    def mouseMoveEvent(self, e):
-        if self._drag is not None:
-            new = e.globalPosition() - self._drag
-            delta = new - QPointF(self.pos())
-            self.move(new.toPoint())
-            self.moved.emit(delta)
-
-    def mouseReleaseEvent(self, e):
-        self._drag = None
+        self.show_at(QPoint(g.right() - self.width(), g.top() - self.height() - 6), overlay.screen(), mode)

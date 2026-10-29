@@ -788,7 +788,7 @@ class MainWindow(QMainWindow):
         pw.valueChanged.connect(lambda v: self._set("popup_width", v))
         g.addWidget(pw, 4, 1)
 
-        g = section("перевод речи")
+        g = section("субтитры и перевод речи")
         g.addWidget(_label("распознавание"), 1, 0)
         g.addWidget(combo([("base", "быстрое (модель 145 мб)"), ("small", "точное (485 мб, медленнее)")],
                           s.get("asr_model", "base"), "asr_model"), 1, 1)
@@ -810,6 +810,14 @@ class MainWindow(QMainWindow):
         og.setChecked(s.get("subs_original", True))
         og.toggled.connect(lambda v: self._set("subs_original", v))
         g.addWidget(og, 5, 0, 1, 3)
+        lr = Toggle("живые субтитры видно на записи экрана (перевод встанет под оригиналом)")
+        lr.setToolTip("Обычно плашка живых субтитров скрыта от снимков и записи экрана: так она лежит прямо на "
+                      "оригинале, а Вавилон всё равно читает текст под ней. Для записи ролика включите это — "
+                      "плашка будет видна, но встанет под субтитрами, чтобы не читать свой же перевод. "
+                      "Действует со следующего запуска субтитров.")
+        lr.setChecked(s.get("live_recordable", False))
+        lr.toggled.connect(lambda v: self._set("live_recordable", v))
+        g.addWidget(lr, 6, 0, 1, 3)
 
         g = section("распознавание текста с экрана")
         g.addWidget(_label("язык на картинках"), 1, 0)

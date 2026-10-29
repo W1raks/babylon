@@ -105,3 +105,85 @@ def test_live_flow(monkeypatch):
     assert got[-1][1] == "[ru] Home. It is late."
     subs.stop()
     assert not subs.running
+
+
+def test_fix_twins():
+    assert ocr.fix_twins("tаll аnd wild аnd Pоntus") == "tall and wild and Pontus"   # «а», «о» — кириллица
+    assert ocr.fix_twins("Кот сидит на окне") == "Кот сидит на окне"                  # русский не трогаем
+    assert ocr.fix_twins("Hello world") == "Hello world"
+
+
+def run_live(monkeypatch, img_of, sec):
+    tr = FakeTr()
+    subs = live.LiveSubs(tr, {"preferred": "ru", "fallback": "en", "ocr_lang": "auto"})
+    got, status = [], []
+    subs.phrase.connect(lambda text, out, lines, ms: got.append((text, out)))
+    subs.status.connect(status.append)
+    i = {"n": 0}
+
+    def grab():
+        i["n"] += 1
+        with subs._cv:
+            subs._frame = (time.monotonic(), img_of(i["n"]), 1.0)
+            subs._cv.notify()
+
+    monkeypatch.setattr(subs, "_grab", grab)
+    subs.start(QRect(0, 0, 400, 60), screen=None)
+    subs._timer.timeout.disconnect()
+    subs._timer.timeout.connect(grab)
+    pump(sec)
+    subs.stop()
+    return got, status
+
+
+def test_english_read_by_russian_ocr(monkeypatch):
+    """В Windows только русский OCR: он пишет английский буквами-двойниками, а перевести надо как английский."""
+    async def recognize(buf, w, h, lang):
+        assert lang == "ru"
+        return [Line("tаll аnd wild аnd Pоntus", 40, 10, 300, 30, [("tаll", 40, 10, 40, 30)])]
+
+    monkeypatch.setattr(ocr, "available_languages", lambda: ["ru"])
+    monkeypatch.setattr(ocr, "_recognize", recognize)
+    got, status = run_live(monkeypatch, lambda n: frame(1, n), 0.6)
+    assert got and got[0] == ("tall and wild and Pontus", "[ru] tall and wild and Pontus"), status
+
+
+def test_hint_when_nothing_seen(monkeypatch):
+    monkeypatch.setattr(live, "HINT_AFTER", 0.2)
+    monkeypatch.setattr(ocr, "read_auto", lambda b, w, h, p: ([], "en", 0.0))
+    black = QImage(400, 60, QImage.Format.Format_ARGB32_Premultiplied)
+    black.fill(QColor(0, 0, 0))
+    _, status = run_live(monkeypatch, lambda n: black, 0.5)
+    assert status == ["вижу только чёрный кадр"]
+    _, status = run_live(monkeypatch, lambda n: frame(0, n), 0.5)
+    assert status == ["не вижу текста в области"]
+
+
+def test_wrong_ocr_language_in_settings(monkeypatch):
+    """В настройках «язык на картинках: русский», а субтитры английские (так было у Дмитрия)."""
+    async def recognize(buf, w, h, lang):
+        text = "tаll аnd wild аnd Pоntus" if lang == "ru" else "tall and wild and Pontus"
+        return [Line(text, 40, 10, 300, 30, [])]
+
+    monkeypatch.setattr(ocr, "available_languages", lambda: ["en", "ru", "zh"])
+    monkeypatch.setattr(ocr, "_recognize", recognize)
+    tr = FakeTr()
+    subs = live.LiveSubs(tr, {"preferred": "ru", "fallback": "en", "ocr_lang": "ru"})
+    got = []
+    subs.phrase.connect(lambda text, out, lines, ms: got.append(out))
+    i = {"n": 0}
+
+    def grab():
+        i["n"] += 1
+        with subs._cv:
+            subs._frame = (time.monotonic(), frame(1, i["n"] % 2 * 39), 1.0)  # видео идёт: кадры разные
+            subs._cv.notify()
+
+    monkeypatch.setattr(subs, "_grab", grab)
+    subs.start(QRect(0, 0, 400, 60), screen=None)
+    subs._timer.timeout.disconnect()
+    subs._timer.timeout.connect(grab)
+    pump(1.2)
+    subs.stop()
+    assert got and got[0] == "[ru] tall and wild and Pontus"   # переведено на русский, а не «на английский»
+    assert subs.lang == "en"                                      # дальше читает английским OCR

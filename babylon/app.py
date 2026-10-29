@@ -180,6 +180,8 @@ class Babylon(QObject):
         m.addAction("текст с экрана", self.snip)
         self._live_action = m.addAction("живые субтитры", self.toggle_live)
         self._hear_action = m.addAction("перевод речи (звук компьютера)", self.toggle_hearing)
+        self._bars_action = m.addAction("показать панель субтитров", self._show_bars)
+        self._bars_action.setVisible(False)
         m.addAction("разговор", lambda: (self.win.show_page("talk"), self.open_window()))
         m.addAction("перевести фото или видео", lambda: (self.win.show_page("media"), self.open_window()))
         m.addAction("открыть окно", self.open_window)
@@ -473,10 +475,15 @@ class Babylon(QObject):
             self.live_bar = LiveBar(self.s["preferred"], self.s["opacity"])
             self.live_bar.stop.connect(self.stop_live)
             self.live_bar.target_changed.connect(self.live.set_target)
-        self.subs.place(rect, screen)
-        self.live_bar.place(rect, screen)
+            self.live_bar.mode_changed.connect(lambda m: self._bar_mode("live_bar", m))
+            self.live_bar.placed.connect(lambda p: (self.s.__setitem__("live_bar_pos", [p.x(), p.y()]), self.s.save()))
+        rec = bool(self.s.get("live_recordable", False))
+        self.subs.place(rect, screen, rec)
+        pos = self.s.get("live_bar_pos")
+        self.live_bar.place(rect, screen, rec, self.s.get("live_bar", "full"), QPoint(*pos) if pos else None)
         self.live.start(rect, screen, self.live_bar.tgt.code)
         self._live_action.setText("остановить живые субтитры")
+        self._update_bars_action()
 
     def _live_phrase(self, text, out, lines, ms):
         if not self.subs:
@@ -491,6 +498,27 @@ class Babylon(QObject):
             self.subs.hide()
             self.live_bar.hide()
         self._live_action.setText("живые субтитры")
+        self._update_bars_action()
+
+    # --- панели субтитров: свернуть в значок, скрыть, вернуть из трея ---
+    def _bar_mode(self, key: str, mode: str):
+        self.s[key] = mode
+        self.s.save()
+        self._update_bars_action()
+        if mode == "hidden":
+            self._notify("Панель скрыта, субтитры работают. Вернуть панель — в меню значка в трее, "
+                         "выключить субтитры — " + ("Ctrl+Alt+L" if key == "live_bar" else "Ctrl+Alt+H"))
+
+    def _hidden_bars(self):
+        return [b for b, on in ((self.live_bar, self.live.running), (self.hear_bar, self.hearing.running))
+                if b is not None and on and b.mode == "hidden"]
+
+    def _update_bars_action(self):
+        self._bars_action.setVisible(bool(self._hidden_bars()))
+
+    def _show_bars(self):
+        for b in self._hidden_bars():
+            b.set_mode("full")
 
     # --- перевод речи ---
     def toggle_hearing(self):
@@ -530,11 +558,13 @@ class Babylon(QObject):
             self.hear_bar.target_changed.connect(self._hear_target)
             self.hear_bar.voice_toggled.connect(self._voice_toggled)
             self.hear_bar.moved.connect(lambda d: self.speech_subs.move(self.speech_subs.pos() + d.toPoint()))
+            self.hear_bar.mode_changed.connect(lambda m: self._bar_mode("hear_bar", m))
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         self.speech_subs.place(screen)
         self.hear_bar.tgt.set_code(self.hearing.target, emit=False)
         self.hear_bar.set_source("звук компьютера" if self.hearing.source == "system" else "микрофон")
-        self.hear_bar.place_near(self.speech_subs)
+        self.hear_bar.place_near(self.speech_subs, self.s.get("hear_bar", "full"))
+        self._update_bars_action()
 
     def _hide_speech_subs(self):
         if self.speech_subs:
@@ -546,6 +576,7 @@ class Babylon(QObject):
         self._hear_action.setText("остановить перевод речи" if on else "перевод речи (звук компьютера)")
         if not on:
             self._hide_speech_subs()
+        self._update_bars_action()
 
     def _hear_target(self, code: str):
         self.hearing.target = code
@@ -860,7 +891,7 @@ class Babylon(QObject):
         if self.speech_subs and changed.keys() & {"subs_size", "subs_pos", "subs_opacity", "subs_original"}:
             if self.speech_subs.isVisible():
                 self.speech_subs.place(self.speech_subs.screen())
-                self.hear_bar.place_near(self.speech_subs)
+                self.hear_bar.place_near(self.speech_subs, self.hear_bar.mode)
             self.speech_subs.update()
         if "autostart" in changed:
             try:
