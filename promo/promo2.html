@@ -1,0 +1,283 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Babylon — открытый выпуск</title>
+<style>
+/* Ролик к открытому выпуску: без голоса, в духе продуктовых роликов — свечение, логотип, окна программы
+   в перспективе с подписью сверху, «Бесплатно. Без рекламы…», финальная заставка. Каждый кадр — draw(t). */
+@font-face { font-family: "Inter"; src: url("Inter.ttf"); font-weight: 100 900; }
+html, body { margin: 0; background: #000; overflow: hidden; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050506;
+  font-family: "Inter", system-ui, sans-serif; color: #f4f4f5; perspective: 2200px; }
+.abs { position: absolute; left: 0; top: 0; will-change: transform, opacity, filter; }
+.glow { width: 1600px; height: 1600px; border-radius: 50%; left: 160px; top: -260px; filter: blur(140px); }
+.brand { display: flex; flex-direction: column; align-items: center; gap: 26px; width: 1920px; top: 380px; }
+.brand .mark { width: 150px; height: 150px; border-radius: 38px; display: grid; place-items: center;
+  font-weight: 800; font-size: 74px; color: #fff; }
+.brand .name { font-size: 40px; font-weight: 700; letter-spacing: -0.5px; }
+.row { display: flex; gap: 56px; width: 1920px; justify-content: center; top: 390px; }
+.row .mark { width: 120px; height: 120px; border-radius: 30px; display: grid; place-items: center;
+  font-weight: 800; font-size: 56px; color: #fff; }
+.caption { width: 1920px; text-align: center; font-size: 64px; font-weight: 700; letter-spacing: -1.5px; top: 70px; }
+.sub { width: 1920px; text-align: center; font-size: 30px; color: #a1a1aa; top: 160px; }
+.shot { border-radius: 22px; box-shadow: 0 60px 140px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.08);
+  transform-origin: 50% 50%; }
+.ring { width: 360px; height: 360px; left: 780px; top: 360px; border-radius: 50%; border: 3px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 40px rgba(255,255,255,.35); }
+.dot { width: 14px; height: 14px; left: 953px; top: 533px; border-radius: 50%; background: #fff; box-shadow: 0 0 30px 8px rgba(255,255,255,.8); }
+.bar { height: 14px; left: 560px; top: 533px; width: 800px; border-radius: 7px; background: #fff;
+  box-shadow: 0 0 40px 10px rgba(255,120,110,.65), 0 0 120px 20px rgba(255,59,59,.35); transform-origin: 50% 50%; }
+.logo { width: 1920px; top: 330px; display: flex; flex-direction: column; align-items: center; }
+.logo .line { display: flex; align-items: center; gap: 34px; }
+.logo img { width: 190px; height: 190px; }
+.logo .word { font-size: 150px; font-weight: 800; letter-spacing: -5px; }
+.logo .tag { font-size: 34px; color: #c4c4cc; margin-top: 10px; }
+.free { left: 260px; top: 300px; font-size: 104px; font-weight: 800; letter-spacing: -3px; line-height: 1.12; }
+.free div { color: #3f3f46; }
+.end { width: 1920px; top: 360px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.end .line { display: flex; align-items: center; gap: 30px; }
+.end img { width: 150px; height: 150px; }
+.end .word { font-size: 124px; font-weight: 800; letter-spacing: -4px; }
+.end .url { font-size: 40px; font-weight: 600; }
+.end .os { font-size: 24px; color: #a1a1aa; }
+.check { display: inline-grid; place-items: center; width: 1em; }
+.swatch { width: 54px; height: 54px; border-radius: 50%; }
+.grain { width: 1920px; height: 1080px; opacity: .06; mix-blend-mode: overlay; pointer-events: none; }
+.vign { width: 1920px; height: 1080px; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%); }
+</style>
+<div id="stage">
+  <div class="abs glow" id="glow"></div>
+  <div class="abs glow" id="glow2"></div>
+
+  <!-- 1. другие переводчики -->
+  <div class="abs brand" id="b0"><div class="mark" style="background:#4285f4">G</div><div class="name">Google Переводчик</div></div>
+  <div class="abs brand" id="b1"><div class="mark" style="background:#0f2b46;color:#6cc4ff">D</div><div class="name">DeepL</div></div>
+  <div class="abs brand" id="b2"><div class="mark" style="background:#fc3f1d">Я</div><div class="name">Яндекс Переводчик</div></div>
+  <div class="abs brand" id="b3"><div class="mark" style="background:#10a37f">AI</div><div class="name">Чат-боты</div></div>
+  <div class="abs row" id="row">
+    <div class="mark" style="background:#4285f4">G</div><div class="mark" style="background:#0f2b46;color:#6cc4ff">D</div>
+    <div class="mark" style="background:#fc3f1d">Я</div><div class="mark" style="background:#10a37f">AI</div>
+  </div>
+  <div class="abs caption" id="rowcap" style="top:600px">Каждый — в своей вкладке.</div>
+  <div class="abs sub" id="rowsub" style="top:690px">А переводить нужно везде: в играх, видео, созвонах и документах.</div>
+
+  <!-- 2. круг → точка → полоса → логотип -->
+  <div class="abs ring" id="ring"></div>
+  <div class="abs dot" id="dot"></div>
+  <div class="abs bar" id="bar"></div>
+  <div class="abs logo" id="logo"><div class="line"><img src="img/tower.svg"><div class="word">Вавилон</div></div>
+    <div class="tag">переводчик поверх всех окон</div></div>
+
+  <!-- 3+. возможности -->
+  <div class="abs caption" id="cap"></div>
+  <div class="abs sub" id="capsub"></div>
+  <img class="abs shot" id="win" src="img/window.png">
+  <img class="abs shot" id="pop" src="img/popup.png" style="border-radius:16px">
+  <img class="abs shot" id="speech" src="img/speech_subs.png">
+  <img class="abs shot" id="live" src="img/live_subs.png">
+  <img class="abs shot" id="photoA" src="img/sample_photo.png">
+  <div class="abs" id="photoBclip" style="overflow:hidden;border-radius:22px"><img id="photoB" src="img/media_photo_full.png" style="display:block"></div>
+  <div class="abs" id="scan" style="width:6px;border-radius:3px;background:#ff3b3b;box-shadow:0 0 30px 6px rgba(255,59,59,.7)"></div>
+  <img class="abs shot" id="doc" src="img/media_doc.png">
+  <img class="abs shot" id="talk" src="img/talk_phrases.png">
+  <img class="abs shot" id="settings" src="img/settings.png">
+  <div class="abs" id="swatches" style="display:flex;gap:22px;width:1920px;justify-content:center;top:960px"></div>
+
+  <!-- 4. бесплатно -->
+  <div class="abs free" id="free"><div>Бесплатно.</div><div>Без рекламы.</div><div>Без подписок.</div><div>Открытый код.</div></div>
+
+  <!-- 5. финал -->
+  <div class="abs end" id="end"><div class="line"><img src="img/tower.svg"><div class="word">Вавилон</div></div>
+    <div class="url">github.com/W1raks/babylon</div><div class="os">Windows 10 · 11 · бесплатно · открытый код</div></div>
+
+  <canvas class="abs grain" id="grain" width="480" height="270" style="width:1920px;height:1080px"></canvas>
+  <div class="abs vign"></div>
+  <div class="abs" id="black" style="width:1920px;height:1080px;background:#000"></div>
+</div>
+<script>
+const DUR = 41;
+const ACC = ['#ff3b3b', '#ff8a3d', '#f5c542', '#4ade80', '#38bdf8', '#8b5cf6', '#f472b6'];
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, p) => a + (b - a) * p;
+const prog = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+const eOut = x => 1 - Math.pow(1 - x, 3);
+const eIn = x => x * x * x;
+const eIO = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+// окно появления: in за d1, держится, out за d2
+const win = (t, a, b, d1 = .5, d2 = .45) => eOut(prog(t, a, a + d1)) * (1 - eIn(prog(t, b - d2, b)));
+
+function set(e, o) {
+  const s = e.style;
+  s.opacity = o.o ?? 1;
+  if (e.dataset.disp === undefined) e.dataset.disp = s.display || '';  // свой display (flex) не теряем
+  s.display = (o.o ?? 1) <= 0.001 ? 'none' : e.dataset.disp;
+  const tr = [];
+  if (o.x !== undefined || o.y !== undefined) tr.push(`translate(${o.x || 0}px, ${o.y || 0}px)`);
+  if (o.z) tr.push(`translateZ(${o.z}px)`);
+  if (o.ry) tr.push(`rotateY(${o.ry}deg)`);
+  if (o.rx) tr.push(`rotateX(${o.rx}deg)`);
+  if (o.rz) tr.push(`rotateZ(${o.rz}deg)`);
+  if (o.s !== undefined) tr.push(`scale(${o.s})`);
+  s.transform = tr.join(' ');
+  const f = [];
+  if (o.blur) f.push(`blur(${o.blur}px)`);
+  if (o.hue) f.push(`hue-rotate(${o.hue}deg)`);
+  if (o.br !== undefined) f.push(`brightness(${o.br})`);
+  s.filter = f.join(' ');
+  if (o.w) s.width = o.w + 'px';
+  if (o.h) s.height = o.h + 'px';
+}
+
+const sw = $('swatches');
+ACC.forEach(c => { const d = document.createElement('div'); d.className = 'swatch'; d.style.background = c; sw.appendChild(d); });
+
+// подписи сцен с возможностями: [начало, конец, заголовок, подзаголовок]
+const CAPS = [
+  [8.6, 12.6, 'Выделил — перевёл.', 'в любой программе: браузер, pdf, игры, чаты'],
+  [12.6, 16.8, 'Субтитры к любому видео.', 'даже если субтитров нет — речь распознаётся прямо на компьютере'],
+  [16.8, 20.4, 'Поверх игр и плееров.', 'живые субтитры ложатся прямо на оригинал'],
+  [20.4, 24.2, 'Фото — с переводом на месте текста.', 'вывески, меню, скриншоты'],
+  [24.2, 27.4, 'Документы — с тем же оформлением.', 'docx, pdf, txt, srt'],
+  [27.4, 30.6, 'Разговор в обе стороны.', 'созвоны, конференции, собеседник рядом'],
+  [30.6, 33.6, 'Под себя.', 'цвет, прозрачность, субтитры, клавиши'],
+];
+
+function caption(t) {
+  const c = CAPS.find(c => t >= c[0] - .05 && t < c[1]);
+  const cap = $('cap'), sub = $('capsub');
+  if (!c) { set(cap, { o: 0 }); set(sub, { o: 0 }); return; }
+  const a = win(t, c[0], c[1], .45, .35);
+  if (cap.textContent !== c[2]) { cap.textContent = c[2]; sub.textContent = c[3]; }
+  set(cap, { o: a, y: 18 * (1 - a), blur: 8 * (1 - a) });
+  set(sub, { o: a * .95, y: 22 * (1 - a), blur: 8 * (1 - a) });
+}
+
+// окно программы в перспективе: появляется из глубины, поворачивается к зрителю, уходит в размытие
+function shot(e, t, a, b, o) {
+  if (t < a - .1 || t > b + .1) { set(e, { o: 0 }); return; }
+  const pin = eOut(prog(t, a, a + .9)), pout = eIn(prog(t, b - .5, b));
+  const k = prog(t, a, b);
+  set(e, {
+    o: Math.min(1, pin * 1.4) * (1 - pout),
+    x: o.x + (o.dx || 0) * k, y: o.y + 80 * (1 - pin) - 40 * pout,
+    ry: lerp(o.ry0 ?? -18, o.ry1 ?? -6, eIO(k)), rx: lerp(o.rx0 ?? 10, o.rx1 ?? 4, eIO(k)),
+    s: (o.s || 1) * (0.86 + 0.14 * pin) * (1 + (o.zoom || 0) * k) + pout * .06,
+    blur: 18 * (1 - pin) + 22 * pout,
+  });
+}
+
+const grain = $('grain').getContext('2d');
+function noise(t) {
+  const im = grain.createImageData(480, 270);
+  let seed = Math.floor(t * 30) * 9301 + 49297;
+  for (let i = 0; i < im.data.length; i += 4) {
+    seed = (seed * 9301 + 49297) % 233280;
+    const v = seed / 233280 * 255;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255;
+  }
+  grain.putImageData(im, 0, 0);
+}
+
+function glowAt(t) {
+  // цвет свечения по сценам: бренды → красный Вавилона → тёплый финал
+  const G = [[0, '#2b5fd9'], [1.0, '#1b4f8a'], [1.9, '#c2361c'], [2.8, '#0e7c62'], [4.0, '#3a1d52'],
+             [5.2, '#000000'], [6.6, '#5c0f12'], [8.6, '#24122a'], [12.6, '#3b1a14'], [16.8, '#14243b'],
+             [20.4, '#3a2410'], [24.2, '#1b2440'], [27.4, '#3d1018'], [30.6, '#123a40'], [33.6, '#1a0f14'],
+             [37.4, '#7a2410'], [41, '#7a2410']];
+  let i = 0; while (i < G.length - 2 && t >= G[i + 1][0]) i++;
+  const [a, ca] = G[i], [b, cb] = G[i + 1];
+  const p = eIO(prog(t, b - .6, b));
+  const mix = (x, y) => Math.round(lerp(parseInt(x, 16), parseInt(y, 16), p));
+  const c = [1, 3, 5].map(k => mix(ca.substr(k, 2), cb.substr(k, 2)));
+  return `rgb(${c.join(',')})`;
+}
+
+function draw(t) {
+  // свечение
+  const g = $('glow'), g2 = $('glow2');
+  g.style.background = `radial-gradient(circle, ${glowAt(t)} 0%, rgba(0,0,0,0) 62%)`;
+  set(g, { o: .9, x: Math.sin(t * .4) * 160, y: Math.cos(t * .3) * 60 });
+  g2.style.background = `radial-gradient(circle, ${glowAt(t + 1.5)} 0%, rgba(0,0,0,0) 60%)`;
+  set(g2, { o: .45, x: 500 + Math.cos(t * .27) * 240, y: 520 + Math.sin(t * .35) * 80, s: .8 });
+
+  // 1. переводчики по одному, потом все вместе
+  for (let i = 0; i < 4; i++) {
+    const a = .2 + i * .9, b = a + .95;
+    const p = win(t, a, b, .35, .3);
+    set($('b' + i), { o: p, s: .9 + .1 * eOut(prog(t, a, a + .5)), blur: 10 * (1 - p) });
+  }
+  const r = win(t, 3.85, 5.3, .5, .4);
+  set($('row'), { o: r, s: .94 + .06 * r, blur: 8 * (1 - r) });
+  set($('rowcap'), { o: win(t, 4.05, 5.3, .45, .4), y: 14 * (1 - eOut(prog(t, 4.05, 4.5))) });
+  set($('rowsub'), { o: win(t, 4.35, 5.3, .45, .4) * .95 });
+
+  // 2. круг сжимается в точку → полоса → логотип
+  const ringIn = prog(t, 5.3, 5.55), ringShrink = eIn(prog(t, 5.55, 6.35));
+  set($('ring'), { o: ringIn * (1 - prog(t, 6.25, 6.4)), s: 1 - .96 * ringShrink });
+  set($('dot'), { o: prog(t, 5.4, 5.6) * (1 - prog(t, 6.3, 6.45)), s: 1 + Math.sin(t * 20) * .05 });
+  const bar = eExpo(prog(t, 6.35, 6.8));
+  set($('bar'), { o: prog(t, 6.3, 6.4) * (1 - prog(t, 7.0, 7.35)), s: 1, w: 14 + 800 * bar, x: 400 * (1 - bar) });
+  const lg = win(t, 6.95, 8.6, .55, .45);
+  set($('logo'), { o: lg, s: 1.06 - .06 * eOut(prog(t, 6.95, 7.6)), blur: 14 * (1 - lg) });
+
+  // 3. возможности
+  caption(t);
+  shot($('win'), t, 8.6, 12.6, { x: 360, y: 260, s: .95, ry0: -16, ry1: -4 });
+  const pp = prog(t, 9.6, 10.3);
+  set($('pop'), { o: pp > 0 && t < 12.2 ? Math.min(1, pp * 2) * (1 - eIn(prog(t, 12.0, 12.4))) : 0,
+    x: 1160, y: 650 + 40 * (1 - eOut(pp)), s: .85 + .15 * eOut(pp), z: 120, ry: -4 });
+  shot($('speech'), t, 12.6, 16.8, { x: 160, y: 190, s: .7, ry0: 14, ry1: 4, zoom: .04 });  // 1600×900: уменьшаем, чтобы низ с субтитрами влез
+  shot($('live'), t, 16.8, 20.4, { x: 320, y: 250, s: 1.0, ry0: -14, ry1: -3, zoom: .04 });
+  // фото: до и после, по нему проходит красная линия
+  const ph = win(t, 20.4, 24.2, .7, .45);
+  const scan = eIO(prog(t, 21.3, 23.0));
+  const W = 1100 * 1.0, H = 720 * 1.0, px = 410, py = 260;
+  set($('photoA'), { o: ph, x: px, y: py + 60 * (1 - ph), ry: lerp(10, 2, prog(t, 20.4, 24.2)), blur: 16 * (1 - ph) });
+  const clip = $('photoBclip');
+  set(clip, { o: ph, x: px, y: py + 60 * (1 - ph), ry: lerp(10, 2, prog(t, 20.4, 24.2)), blur: 16 * (1 - ph),
+    w: Math.max(1, W * scan), h: H });
+  set($('scan'), { o: scan > 0 && scan < 1 ? ph : 0, x: px + W * scan - 3, y: py - 20 + 60 * (1 - ph), h: H + 40 });
+  shot($('doc'), t, 24.2, 27.4, { x: 450, y: 250, s: 1.0, ry0: 14, ry1: 4 });
+  shot($('talk'), t, 27.4, 30.6, { x: 450, y: 250, s: 1.0, ry0: -14, ry1: -4 });
+  // настройки: акцент перебирает цвета
+  const ci = Math.floor(clamp((t - 31.2) / .32, 0, 6.99));
+  const hues = [0, 25, 45, 135, 195, 260, 320];
+  shot($('settings'), t, 30.6, 33.6, { x: 410, y: 230, s: .95, ry0: 12, ry1: 3 });
+  if (t > 31.2) $('settings').style.filter += ` hue-rotate(${hues[ci]}deg)`;
+  const swa = win(t, 31.0, 33.6, .4, .4);
+  set(sw, { o: swa, y: 10 * (1 - swa) });
+  [...sw.children].forEach((d, i) => { d.style.transform = `scale(${i === ci && t > 31.2 ? 1.35 : 1})`;
+    d.style.boxShadow = i === ci && t > 31.2 ? `0 0 0 4px #fff, 0 0 30px ${ACC[i]}` : 'none'; });
+
+  // 4. бесплатно: строки загораются по очереди
+  const fr = win(t, 33.6, 37.4, .4, .5);
+  set($('free'), { o: fr, blur: 8 * (1 - fr) });
+  [...$('free').children].forEach((d, i) => {
+    const on = prog(t, 34.0 + i * .7, 34.3 + i * .7);
+    d.style.color = `rgb(${Math.round(lerp(63, 244, on))},${Math.round(lerp(63, 244, on))},${Math.round(lerp(70, 245, on))})`;
+    if (i === 3) d.style.color = on > 0 ? `rgba(255,${Math.round(lerp(63, 59, on))},${Math.round(lerp(70, 59, on))},1)` : '#3f3f46';
+    d.style.textShadow = i === 3 && on > .5 ? '0 0 40px rgba(255,59,59,.55)' : 'none';
+  });
+
+  // 5. финал
+  const en = prog(t, 37.4, 38.3);
+  set($('end'), { o: eOut(en), s: 1.05 - .05 * eOut(en), blur: 12 * (1 - en) });
+
+  noise(t);
+  const fade = Math.max(1 - prog(t, 0, .4), prog(t, 40.2, 41));
+  set($('black'), { o: fade });
+}
+window.draw = draw;
+window.ready = Promise.all([...document.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = i.onerror = r; })))
+  .then(() => document.fonts.load('800 40px Inter')).then(() => document.fonts.ready);
+const q = new URLSearchParams(location.search);
+window.ready.then(() => {
+  if (q.has('render')) return;
+  if (q.has('t')) { draw(+q.get('t')); return; }
+  const t0 = performance.now();
+  const loop = () => { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+});
+</script>
+<script src="music2.js"></script>

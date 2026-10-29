@@ -1,0 +1,613 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Babylon — промо</title>
+<style>
+@font-face { font-family: "Inter"; src: url("Inter.ttf"); font-weight: 100 900; }
+html, body { margin: 0; background: #000; }
+canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+<canvas id="cv" width="1920" height="1080"></canvas>
+<script>
+/* Промо-ролик «Вавилон / Babylon»: каждый кадр — функция времени draw(t).
+   Сцены: крючок (7000 языков) → башня → выделил и нажал → живые субтитры → фото → видео целиком → факты → финал.
+   Картинки интерфейса — настоящие кадры программы (promo/assets.py), звук — renderMusic() + голос Piper. */
+const W = 1920, H = 1080, TAU = Math.PI * 2;
+const DUR = 52;
+const SC = {
+  hook: [0, 4.2], tower: [4.0, 10.7], select: [10.5, 17.8], live: [17.5, 27.8],
+  photo: [27.5, 34.2], video: [34.0, 39.2], facts: [39.0, 46.3], end: [46.0, 52],
+};
+// реплики голоса: [начало, конец] (длительности из Piper)
+const VO = [[0.6, 2.75], [4.6, 9.1], [11.0, 15.6], [18.0, 23.5], [28.0, 32.0], [34.4, 37.5], [39.4, 45.25], [47.0, 49.7]];
+const C = { bg: '#09090b', red: '#ff3b3b', ink: '#f4f4f5', muted: '#a1a1aa', faint: '#52525b', glass: 'rgba(22,22,26,.82)' };
+const FONT = '"Inter", system-ui, sans-serif';
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, p) => a + (b - a) * p;
+const prog = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+const eOut = x => 1 - Math.pow(1 - x, 3);
+const eIn = x => x * x * x;
+const eIO = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eExpo = x => x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
+const eBack = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const spring = x => x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.exp(-6 * x) * Math.cos(x * 11);
+const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let SA = 1;  // прозрачность текущей сцены
+// прозрачность с учётом прозрачности сцены (SA)
+const ga = a => { ctx.globalAlpha = clamp(a * SA, 0, 1); };
+
+/* ---------- картинки ---------- */
+const IMG = {};
+const names = ['popup', 'livebar', 'photo', 'photo_ru', 'window'];
+const loads = names.map(n => new Promise(r => { const i = new Image(); i.onload = () => { IMG[n] = i; r(); }; i.src = `img/${n}.png`; }));
+loads.push(new Promise(r => { const i = new Image(); i.onload = () => { IMG.tower = i; r(); }; i.src = 'img/tower.svg'; }));
+window.ready = Promise.all([...loads, document.fonts.load(`800 40px ${FONT}`), document.fonts.load(`500 20px ${FONT}`)]);
+
+/* ---------- примитивы ---------- */
+function font(w, px) { ctx.font = `${w} ${px}px ${FONT}`; }
+function glow(b, c = C.red) { ctx.shadowColor = c; ctx.shadowBlur = b; }
+function noGlow() { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+// буквы влетают по одной (кинетическая типографика)
+function kinetic(str, x, y, o, t) {
+  font(o.w ?? 800, o.px); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.ls) ctx.letterSpacing = o.ls + 'px'; else ctx.letterSpacing = '0px';
+  const tw = ctx.measureText(str).width;
+  const sx = o.align === 'center' ? x - tw / 2 : o.align === 'right' ? x - tw : x;
+  const st = o.stagger ?? .025, d = o.dur ?? .5, rise = o.rise ?? o.px * .5;
+  const out = o.out ? eIn(prog(t, o.out, o.out + .35)) : 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]; if (ch === ' ') continue;
+    const p = eOut(prog(t, o.start + i * st, o.start + i * st + d)); if (p <= 0) continue;
+    const off = ctx.measureText(str.slice(0, i)).width;
+    ga(p * (1 - out) * (o.alpha ?? 1));
+    ctx.fillStyle = typeof o.color === 'function' ? o.color(i) : (o.color ?? C.ink);
+    if (o.glow) glow(o.glow, o.glowColor);
+    ctx.fillText(ch, sx + off, y + rise * (1 - p) - out * rise * .6);
+    noGlow();
+  }
+  ctx.letterSpacing = '0px';
+  return tw;
+}
+
+function glassCard(x, y, w, h, r, a = 1) {
+  ga(a * .55); ctx.fillStyle = '#000'; glow(60, 'rgba(0,0,0,.9)'); rr(x, y + 18, w, h, r); ctx.fill(); noGlow();
+  ga(a); ctx.fillStyle = C.glass; rr(x, y, w, h, r); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1.5; rr(x + .5, y + .5, w - 1, h - 1, r); ctx.stroke();
+}
+
+function img(im, x, y, w, h, a = 1, r = 0) {
+  if (!im) return;
+  ga(a);
+  if (r) { ctx.save(); rr(x, y, w, h, r); ctx.clip(); ctx.drawImage(im, x, y, w, h); ctx.restore(); }
+  else ctx.drawImage(im, x, y, w, h);
+}
+
+function keycap(label, x, y, w, t, pressAt) {
+  const p = prog(t, pressAt, pressAt + .08), rel = prog(t, pressAt + .22, pressAt + .38);
+  const down = p * (1 - rel), lit = prog(t, pressAt, pressAt + .05);
+  const h = 92, depth = 12 * (1 - down);
+  ga(1); ctx.fillStyle = '#050506'; rr(x, y + 12, w, h, 18); ctx.fill();
+  ctx.fillStyle = lit ? '#2a1214' : '#1c1c21'; rr(x, y + 12 - depth, w, h, 18); ctx.fill();
+  ctx.strokeStyle = lit ? `rgba(255,59,59,${.5 + .5 * (1 - rel)})` : 'rgba(255,255,255,.14)'; ctx.lineWidth = 2;
+  rr(x + 1, y + 13 - depth, w - 2, h - 2, 17); ctx.stroke();
+  if (lit && rel < 1) { ga(1 - rel); glow(40); ctx.stroke(); noGlow(); ga(1); }
+  font(700, 34); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = lit ? '#ffd5d5' : C.ink; ctx.fillText(label, x + w / 2, y + 12 - depth + h / 2 + 2);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function cursorArrow(x, y, s = 1, a = 1) {
+  ga(a); ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 34); ctx.lineTo(9, 26); ctx.lineTo(15, 40); ctx.lineTo(21, 37); ctx.lineTo(15, 24); ctx.lineTo(27, 24); ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+}
+
+/* ---------- фон ---------- */
+const grain = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'); const im = g.createImageData(256, 256);
+  for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+  g.putImageData(im, 0, 0); return c;
+})();
+
+function backdrop(t, warm = 1) {
+  ga(1); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  const gx = 960 + Math.sin(t * .3) * 420, gy = 560 + Math.cos(t * .23) * 160;
+  let g = ctx.createRadialGradient(gx, gy, 0, gx, gy, 1000);
+  g.addColorStop(0, `rgba(255,59,59,${.10 * warm})`); g.addColorStop(1, 'rgba(255,59,59,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  g = ctx.createRadialGradient(1500, 120, 0, 1500, 120, 900);
+  g.addColorStop(0, 'rgba(120,120,160,.06)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1;
+  const off = (t * 12) % 80;
+  ctx.beginPath();
+  for (let x = -off; x < W; x += 80) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = 0; y < H; y += 80) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+}
+
+function finish(t) {
+  // зерно и виньетка поверх всего
+  ga(.05); ctx.globalCompositeOperation = 'overlay';
+  const ox = Math.floor(rnd(Math.floor(t * 24)) * 256), oy = Math.floor(rnd(Math.floor(t * 24) + 7) * 256);
+  for (let x = -ox; x < W; x += 256) for (let y = -oy; y < H; y += 256) ctx.drawImage(grain, x, y);
+  ctx.globalCompositeOperation = 'source-over';
+  const g = ctx.createRadialGradient(960, 540, 500, 960, 540, 1250);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
+  ga(1); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// вход и выход сцены: лёгкий зум и прозрачность
+function stage(t, [a, b], fn, o = {}) {
+  if (t < a || t > b) return;
+  const pin = eOut(prog(t, a, a + (o.in ?? .45))), pout = eIn(prog(t, b - (o.out ?? .4), b));
+  ctx.save();
+  const s = (o.zin ?? 1.06) - ((o.zin ?? 1.06) - 1) * pin - pout * (o.zout ?? .04);
+  ctx.translate(960, 540); ctx.scale(s, s); ctx.translate(-960, -540);
+  const alpha = (o.noFadeIn ? 1 : pin) * (1 - pout);
+  ctx.globalAlpha = alpha;
+  fn(t - a, alpha);
+  ctx.restore();
+}
+const gs = ga;
+
+/* ---------- 1. крючок: тысячи языков ---------- */
+const WORDS = ['Hello', 'Привет', 'こんにちは', 'Hola', '你好', '안녕하세요', 'Bonjour', 'مرحبا', 'Ciao', 'Olá', 'Hallo',
+  'नमस्ते', 'Merhaba', 'Γεια σου', 'Cześć', 'Shalom', 'Xin chào', 'Sawubona', 'Ahoj', 'Hej', 'Salam', 'Jambo', 'Aloha',
+  'Szia', 'Labas', 'Tere', 'Sveiki', 'Здраво', 'Сайн уу', 'Kamusta', 'Halo', 'Dia dhuit', 'Hei', 'Բարեւ', 'გამარჯობა', 'Selam'];
+const WP = (() => {
+  const cells = [];
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 7; c++) {
+    const x = 170 + c * 263, y = 140 + r * 165;
+    if (Math.abs(x - 960) < 480 && Math.abs(y - 560) < 200) continue;  // центр — для счётчика
+    cells.push([x, y]);
+  }
+  return WORDS.slice(0, cells.length).map((w, i) => {
+    const j = i + Math.floor(rnd(i * 7.7) * (cells.length - i));
+    [cells[i], cells[j]] = [cells[j], cells[i]];
+    const [cx, cy] = cells[i];
+    return { w, x: cx + (rnd(i * 3.1) - .5) * 110, y: cy + (rnd(i * 5.7) - .5) * 60, px: 26 + rnd(i * 9.3) * 44,
+      at: .1 + i * .075, red: rnd(i * 2.2) > .84, dx: (rnd(i) - .5) * 30, dy: (rnd(i + 4) - .5) * 20 };
+  });
+})();
+// куда слова летят в конце: в основание башни
+function hook(lt) {
+  for (const p of WP) {
+    const s = spring(prog(lt, p.at, p.at + .7));
+    if (s <= 0) continue;
+    const suck = eIn(prog(lt, 3.35 + rnd(p.px) * .3, 4.1));
+    const x = lerp(p.x + p.dx * lt, 960, suck), y = lerp(p.y + p.dy * lt, 900, suck);
+    font(p.red ? 700 : 500, p.px * (1 - suck * .7));
+    ctx.textAlign = 'center';
+    gs((p.red ? 1 : .55) * Math.min(1, s) * (1 - suck * .6));
+    ctx.fillStyle = p.red ? C.red : C.ink;
+    if (p.red) glow(24);
+    ctx.save(); ctx.translate(x, y); ctx.scale(.6 + .4 * s, .6 + .4 * s); ctx.fillText(p.w, 0, 0); ctx.restore();
+    noGlow();
+  }
+  // счётчик
+  const c = eExpo(prog(lt, .5, 2.4));
+  const n = Math.round(c * 7000);
+  const out = eIn(prog(lt, 3.3, 3.9));
+  gs(prog(lt, .4, .7) * (1 - out));
+  font(900, 230); ctx.textAlign = 'center'; ctx.letterSpacing = '-8px';
+  ctx.fillStyle = C.ink; glow(50 * c, 'rgba(255,59,59,.6)');
+  ctx.fillText(n.toLocaleString('ru-RU').replace(/ /g, ' ') + (c > .98 ? '+' : ''), 960, 600 - out * 40);
+  noGlow(); ctx.letterSpacing = '0px';
+  gs(prog(lt, 1.6, 2.0) * (1 - out));
+  font(600, 46); ctx.fillStyle = C.muted; ctx.fillText('языков в мире', 960, 680 - out * 40);
+}
+
+/* ---------- 2. башня ---------- */
+function towerDraw(cx, base, size, build, fire, lt) {
+  const im = IMG.tower; if (!im) return;
+  const x = cx - size / 2, y = base - size;
+  // постройка по ярусам снизу вверх: обрезка ступеньками
+  const tiers = 9, shown = build * tiers;
+  const full = Math.floor(shown), part = shown - full;
+  const top = base - size * (.06 + .86 * (full + eBack(part) * .999) / tiers);
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 50, top, size + 100, base - top + 10); ctx.clip();
+  gs(1); ctx.drawImage(im, x, y, size, size);
+  ctx.restore();
+  // светящаяся кромка стройки
+  if (build < 1) {
+    gs(.8); ctx.fillStyle = C.red; glow(30); ctx.fillRect(cx - size * .3 * (1 - build * .7), top - 2, size * .6 * (1 - build * .7), 3); noGlow();
+  }
+  if (fire > 0) {
+    const fx = cx, fy = y + size * .1;
+    const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, size * .9 * fire);
+    g.addColorStop(0, `rgba(255,90,70,${.75 * fire})`); g.addColorStop(.3, `rgba(255,59,59,${.25 * fire})`); g.addColorStop(1, 'rgba(255,59,59,0)');
+    gs(1); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(fx, fy, size * .9 * fire, 0, TAU); ctx.fill();
+    for (let k = 0; k < 3; k++) {
+      const r = prog(lt % 1.6, k * .5, k * .5 + 1.4);
+      gs((1 - r) * .6 * fire); ctx.strokeStyle = C.red; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(fx, fy, size * .2 + r * size * .7, (size * .2 + r * size * .7) * .32, 0, 0, TAU); ctx.stroke();
+    }
+  }
+}
+
+function tower(lt, a) {
+  const t = lt + SC.tower[0];
+  const build = eIO(prog(t, 4.3, 6.75));
+  const fire = eOut(prog(t, 6.8, 7.4));
+  const move = eIO(prog(t, 7.5, 8.4));
+  const shake = t > 6.8 && t < 7.2 ? (rnd(t * 200) - .5) * 14 * (1 - prog(t, 6.8, 7.2)) : 0;
+  const cx = lerp(960, 600, move) + shake, base = lerp(1000, 900, move), size = lerp(860, 700, move);
+  // слова-кирпичи сыплются в башню
+  for (let i = 0; i < 60; i++) {
+    const at = 4.0 + i * .045, p = prog(t, at, at + .55);
+    if (p <= 0 || p >= 1) continue;
+    const tx = cx + (rnd(i * 4.4) - .5) * size * .4, ty = base - size * (.1 + .8 * (i / 60));
+    const sx = rnd(i * 3.3) * W, sy = -60;
+    font(600, 30 + rnd(i * 6.1) * 22); ctx.textAlign = 'center'; gs((1 - p) * .9); ctx.fillStyle = i % 5 ? C.ink : C.red;
+    ctx.fillText(WORDS[i % WORDS.length], lerp(sx, tx, eIn(p)), lerp(sy, ty, eIn(p)));
+  }
+  towerDraw(cx, base, size, build, fire, t);
+  // вспышка огня
+  const flash = prog(t, 6.8, 6.85) * (1 - prog(t, 6.85, 7.4));
+  if (flash > 0) { gs(flash * .55); ctx.fillStyle = '#ff6a5a'; ctx.fillRect(0, 0, W, H); }
+  // название
+  const tx = 1000;
+  kinetic('вавилон', tx, 520, { px: 190, start: 7.9, ls: -6, stagger: .05, dur: .6, color: C.ink }, t);
+  kinetic('babylon · переводчик для windows', tx + 8, 610, { px: 40, w: 500, start: 8.5, stagger: .012, color: C.muted }, t);
+  gs(eOut(prog(t, 8.9, 9.4)));
+  ctx.fillStyle = C.red; ctx.fillRect(tx + 8, 660, 120 * eOut(prog(t, 8.9, 9.6)), 6);
+  kinetic('когда-то все говорили на одном языке', tx + 8, 730, { px: 30, w: 500, start: 9.1, stagger: .01, color: C.faint }, t);
+}
+
+/* ---------- 3. выделил → нажал → перевод ---------- */
+const ARTICLE = [
+  ['h', 'How to finally learn a language'],
+  ['p', 'Most people give up after a few weeks.'],
+  ['p', 'They buy courses, download apps and'],
+  ['p', 'forget about them by spring.'],
+  ['s', 'The best way to learn a language is to'],
+  ['s', 'use it every single day.'],
+  ['p', 'Read things you enjoy, watch films'],
+  ['p', 'without dubbing and talk to people.'],
+];
+function selectScene(lt) {
+  const t = lt + SC.select[0];
+  const wx = 150, wy = 150, ww = 1060, wh = 640;
+  const slide = eOut(prog(t, 10.5, 11.1));
+  ctx.save(); ctx.translate(-80 * (1 - slide), 0);
+  glassCard(wx, wy, ww, wh, 26, 1);
+  for (let i = 0; i < 3; i++) { gs(1); ctx.fillStyle = ['#ff5f57', '#febc2e', '#28c840'][i]; ctx.beginPath(); ctx.arc(wx + 36 + i * 28, wy + 34, 8, 0, TAU); ctx.fill(); }
+  gs(1); ctx.fillStyle = 'rgba(255,255,255,.06)'; rr(wx + 140, wy + 18, 520, 32, 16); ctx.fill();
+  font(500, 18); ctx.fillStyle = C.faint; ctx.textAlign = 'left'; ctx.fillText('blog.example.com/learn-languages', wx + 162, wy + 40);
+  let y = wy + 130;
+  const selP = prog(t, 11.4, 12.3);
+  ARTICLE.forEach(([k, s], i) => {
+    font(k === 'h' ? 800 : 500, k === 'h' ? 46 : 34);
+    ctx.fillStyle = k === 'h' ? C.ink : '#c8c8cf'; ctx.textAlign = 'left';
+    if (k === 's') {
+      const lineIdx = i - 4, w = ctx.measureText(s).width;
+      const pLine = clamp(selP * 2 - lineIdx, 0, 1);
+      if (pLine > 0) { gs(1); ctx.fillStyle = 'rgba(59,130,246,.55)'; ctx.fillRect(wx + 56, y - 34, w * pLine + 6, 46); }
+      ctx.fillStyle = C.ink;
+    }
+    gs(1); ctx.fillText(s, wx + 60, y);
+    y += k === 'h' ? 80 : 56;
+  });
+  ctx.restore();
+  // курсор протягивает выделение
+  const sx = wx + 60 - 80 * (1 - slide), sy = wy + 130 + 80 + 56 * 3 - 20;
+  const p1 = eIO(prog(t, 11.4, 11.85)), p2 = eIO(prog(t, 11.85, 12.3));
+  font(500, 34);
+  const w1 = ctx.measureText(ARTICLE[4][1]).width, w2 = ctx.measureText(ARTICLE[5][1]).width;
+  let cx = lerp(sx, sx + w1, p1), cy = sy;
+  if (p2 > 0) { cx = lerp(sx + w1, sx + w2, p2); cy = sy + 56 * p2; }
+  if (t < 11.4) { cx = lerp(sx + 300, sx, eOut(prog(t, 10.8, 11.4))); cy = lerp(sy + 200, sy, eOut(prog(t, 10.8, 11.4))); }
+  cursorArrow(cx, cy, 1.3, 1);
+  // клавиши
+  const kin = eOut(prog(t, 12.2, 12.6));
+  ctx.save(); ctx.translate(0, 40 * (1 - kin)); SA *= kin;
+  keycap('ctrl', 1300, 820, 170, t, 12.65); keycap('alt', 1490, 820, 150, t, 12.82); keycap('T', 1660, 820, 110, t, 12.99);
+  SA /= kin || 1; ctx.restore();
+  // всплывашка с переводом — настоящая
+  const pp = prog(t, 13.15, 13.75);
+  if (pp > 0 && IMG.popup) {
+    const s = .62 + .38 * spring(pp) * .98 + .0;
+    const pw = IMG.popup.width, ph = IMG.popup.height;
+    const px = Math.min(cx - 120, W - pw - 60), py = cy + 46;
+    ctx.save(); ctx.translate(px, py); ctx.scale(s, s);
+    gs(Math.min(1, pp * 3) * .6); ctx.fillStyle = '#000'; glow(80, 'rgba(0,0,0,1)'); rr(10, 30, pw - 20, ph - 30, 20); ctx.fill(); noGlow();
+    gs(Math.min(1, pp * 3)); ctx.drawImage(IMG.popup, 0, 0, pw, ph);
+    ctx.restore();
+  }
+  kinetic('выделил.', 1300, 280, { px: 74, start: 13.5, ls: -2 }, t);
+  kinetic('нажал.', 1300, 360, { px: 74, start: 13.75, ls: -2 }, t);
+  kinetic('понял.', 1300, 440, { px: 74, start: 14.0, ls: -2, color: C.red, glow: 30 }, t);
+  kinetic('в любой программе: браузер, pdf, игры, чаты', 1302, 500, { px: 26, w: 500, start: 14.4, stagger: .008, color: C.muted }, t);
+}
+
+/* ---------- 4. живые субтитры ---------- */
+const BLD = Array.from({ length: 34 }, (_, i) => ({ x: i * 70 - 200 + rnd(i) * 30, w: 60 + rnd(i * 2) * 90, h: 160 + rnd(i * 3) * 380, d: rnd(i * 5) }));
+const BOKEH = Array.from({ length: 26 }, (_, i) => ({ x: rnd(i * 7) * 2200 - 100, y: 380 + rnd(i * 11) * 520, r: 20 + rnd(i * 13) * 70, c: rnd(i * 17) > .5 ? '255,170,90' : '255,90,90', s: .4 + rnd(i * 19) }));
+const SUBS = [
+  [18.0, 20.5, 'Where are you going?', 'Куда ты идёшь?'],
+  [20.7, 23.1, 'We have to leave before sunrise.', 'Нам нужно уйти до рассвета.'],
+  [23.3, 25.7, "I'm not leaving without you.", 'Я не уйду без тебя.'],
+  [25.9, 27.8, 'Then run!', 'Тогда беги!'],
+];
+const LAT = 0.3;  // задержка перевода в ролике (замер на Windows — в описании)
+function cityScene(t, x0, y0, w, h, sub) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
+  ctx.translate(x0, y0); ctx.scale(w / W, h / H);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0b1324'); g.addColorStop(.55, '#2a1c3a'); g.addColorStop(.8, '#7a3b3b'); g.addColorStop(1, '#1a0f14');
+  ctx.globalAlpha = SA; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const mg = ctx.createRadialGradient(1450, 260, 0, 1450, 260, 260);
+  mg.addColorStop(0, 'rgba(255,230,210,.9)'); mg.addColorStop(.12, 'rgba(255,220,200,.5)'); mg.addColorStop(1, 'rgba(255,200,180,0)');
+  ctx.fillStyle = mg; ctx.fillRect(1100, 0, 700, 600);
+  const pan = t * 22;
+  for (const b of BLD) {
+    const bx = ((b.x - pan * (0.4 + b.d * .6)) % 2400 + 2400) % 2400 - 200;
+    ctx.fillStyle = `rgb(${10 + b.d * 14},${8 + b.d * 10},${16 + b.d * 18})`;
+    ctx.fillRect(bx, H - b.h - 60, b.w, b.h + 60);
+    for (let wy = H - b.h - 30; wy < H - 80; wy += 34) for (let wx = bx + 10; wx < bx + b.w - 14; wx += 22) {
+      const on = rnd(wx * .37 + wy * .91 + b.x) > .62;
+      if (on) { ctx.fillStyle = `rgba(255,${190 + rnd(wy) * 50},120,${.35 + .4 * rnd(wx + wy)})`; ctx.fillRect(wx, wy, 10, 16); }
+    }
+  }
+  for (const k of BOKEH) {
+    const bx = ((k.x - t * 40 * k.s) % 2300 + 2300) % 2300 - 150;
+    const bg = ctx.createRadialGradient(bx, k.y, 0, bx, k.y, k.r);
+    bg.addColorStop(0, `rgba(${k.c},.22)`); bg.addColorStop(.7, `rgba(${k.c},.12)`); bg.addColorStop(1, `rgba(${k.c},0)`);
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(bx, k.y, k.r, 0, TAU); ctx.fill();
+  }
+  if (sub) {
+    font(600, 50); ctx.textAlign = 'center';
+    ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineJoin = 'round';
+    ctx.strokeText(sub, 960, 945); ctx.fillStyle = '#fff'; ctx.fillText(sub, 960, 945);
+  }
+  ctx.restore();
+}
+
+function plate(text, cx, cy, px, a, flash, minW = 0) {
+  font(600, px); ctx.textAlign = 'center';
+  const tw = ctx.measureText(text).width, w = Math.max(tw, minW) + px * 1.1, h = px * 1.6;
+  gs(a); ctx.fillStyle = 'rgba(12,12,14,.985)'; rr(cx - w / 2, cy - h / 2, w, h, px * .42); ctx.fill();
+  ctx.strokeStyle = `rgba(255,59,59,${.15 + .7 * flash})`; ctx.lineWidth = 2; if (flash > 0) glow(26 * flash); ctx.stroke(); noGlow();
+  gs(a); ctx.fillStyle = '#f8f8fa'; ctx.fillText(text, cx, cy + px * .36);
+}
+
+function liveScene(lt) {
+  const t = lt + SC.live[0];
+  // плеер разворачивается из полосы
+  const open = eExpo(prog(t, 17.5, 18.1));
+  const px = lerp(160, 0, open), py = lerp(380, 0, open), pw = lerp(1600, W, open), ph = lerp(260, H, open);
+  const cur = SUBS.find(s => t >= s[0] && t < s[1]);
+  cityScene(t, px, py, pw, ph, cur ? cur[2] : '');
+  // интерфейс плеера
+  gs(.9 * open); const bg = ctx.createLinearGradient(0, H - 90, 0, H); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,.7)');
+  ctx.fillStyle = bg; ctx.fillRect(0, H - 90, W, 90);
+  gs(.8 * open); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(40, H - 34, W - 80, 5);
+  ctx.fillStyle = C.red; ctx.fillRect(40, H - 34, (W - 80) * (.31 + (t - 17.5) * .012), 5);
+  // выделение области
+  const rx = 470, ry = 880, rw = 980, rh = 100;
+  const selP = eIO(prog(t, 18.3, 18.9));
+  if (t >= 18.2 && t < 19.0) {
+    gs(.35); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    gs(1); ctx.setLineDash([10, 8]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeRect(rx, ry, rw * selP, rh * selP); ctx.setLineDash([]);
+    cursorArrow(rx + rw * selP, ry + rh * selP, 1.2);
+  }
+  const flash = prog(t, 19.0, 19.05) * (1 - prog(t, 19.1, 20.2));
+  if (flash > 0) { gs(flash); ctx.strokeStyle = C.red; ctx.lineWidth = 3; glow(30); rr(rx - 4, ry - 4, rw + 8, rh + 8, 12); ctx.stroke(); noGlow(); }
+  // панель субтитров (настоящая)
+  const barP = eOut(prog(t, 19.0, 19.4));
+  if (barP > 0 && IMG.livebar) { const bw = IMG.livebar.width * .9, bh = IMG.livebar.height * .9; img(IMG.livebar, rx + rw - bw, ry - bh - 14 + 10 * (1 - barP), bw, bh, barP); }
+  // плашка перевода: появляется через LAT после фразы
+  if (t >= 19.0 && cur) {
+    const since = t - Math.max(cur[0] + LAT, 19.0);
+    if (since >= 0) {
+      const a = Math.min(1, since / .09), fl = 1 - prog(since, 0, .35);
+      font(600, 50); const ow = ctx.measureText(cur[2]).width;  // плашка не уже оригинала: он не просвечивает
+      plate(cur[3], 960, 930, 52, a, fl, ow);
+      // бейдж скорости
+      font(600, 52); const pw2 = Math.max(ctx.measureText(cur[3]).width, ow) + 57;
+      gs(a * (1 - prog(since, .9, 1.3))); font(700, 26); ctx.textAlign = 'left'; ctx.fillStyle = C.red; glow(14);
+      ctx.fillText(`${LAT.toFixed(1).replace('.', ',')} с`, 960 + pw2 / 2 + 18, 940); noGlow();
+    }
+  }
+  // заголовок
+  const hp = eOut(prog(t, 19.6, 20.1));
+  if (hp > 0) {
+    gs(hp * .75); const lg = ctx.createLinearGradient(0, 0, 900, 0); lg.addColorStop(0, 'rgba(0,0,0,.65)'); lg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, 1000, 420);
+  }
+  kinetic('живые субтитры', 90, 190, { px: 92, start: 19.7, ls: -3 }, t);
+  kinetic('поверх любого видео', 90, 292, { px: 92, start: 19.95, ls: -3, color: C.red, glow: 26 }, t);
+  kinetic('youtube, сериалы, стримы, игры · ctrl + alt + L', 94, 356, { px: 28, w: 500, start: 20.4, stagger: .008, color: C.muted }, t);
+}
+
+/* ---------- 5. фото ---------- */
+function photoScene(lt) {
+  const t = lt + SC.photo[0];
+  const pw = 1060, ph = 694, px = 110, py = 200;
+  const tilt = (1 - eOut(prog(t, 27.5, 28.4))) * .08;
+  ctx.save(); ctx.translate(px + pw / 2, py + ph / 2); ctx.rotate(-.025 - tilt); ctx.translate(-(px + pw / 2), -(py + ph / 2));
+  gs(.6); ctx.fillStyle = '#000'; glow(80, '#000'); rr(px, py + 30, pw, ph, 22); ctx.fill(); noGlow();
+  const scan = eIO(prog(t, 28.6, 30.6));
+  // показ «оригинал / перевод» на 32.6–33.1
+  const peek = prog(t, 32.6, 32.7) * (1 - prog(t, 33.2, 33.3));
+  const split = px + pw * (scan * (1 - peek));
+  img(IMG.photo, px, py, pw, ph, 1, 22);
+  ctx.save(); rr(px, py, pw, ph, 22); ctx.clip(); ctx.beginPath(); ctx.rect(px, py, split - px, ph); ctx.clip();
+  img(IMG.photo_ru, px, py, pw, ph, 1); ctx.restore();
+  if (scan > 0 && scan < 1) {
+    gs(1); ctx.fillStyle = C.red; glow(40); ctx.fillRect(split - 2, py - 10, 4, ph + 20); noGlow();
+    for (let i = 0; i < 18; i++) { const yy = py + rnd(i * 3 + Math.floor(t * 30)) * ph; gs(.7); ctx.fillStyle = '#ffb3b3'; ctx.fillRect(split + rnd(i + t) * 30, yy, 3, 3); }
+  }
+  ctx.restore();
+  // переключатель
+  const tg = eOut(prog(t, 31.9, 32.3));
+  if (tg > 0) {
+    const x = px + 40, y = py + ph + 40;
+    gs(tg); ctx.fillStyle = 'rgba(255,255,255,.08)'; rr(x, y, 330, 56, 28); ctx.fill();
+    ctx.fillStyle = '#fff'; rr(x + (peek ? 4 : 166), y + 4, 160, 48, 24); ctx.fill();
+    font(700, 22); ctx.textAlign = 'center';
+    ctx.fillStyle = peek ? '#0a0a0a' : C.muted; ctx.fillText('оригинал', x + 84, y + 36);
+    ctx.fillStyle = peek ? C.muted : '#0a0a0a'; ctx.fillText('перевод', x + 246, y + 36);
+  }
+  kinetic('фото, меню,', 1290, 330, { px: 76, start: 28.3, ls: -3 }, t);
+  kinetic('вывески,', 1290, 415, { px: 76, start: 28.5, ls: -3 }, t);
+  kinetic('скриншоты', 1290, 500, { px: 76, start: 28.7, ls: -3, color: C.red, glow: 26 }, t);
+  kinetic('перевод ложится прямо на картинку —', 1293, 570, { px: 27, w: 500, start: 29.6, stagger: .007, color: C.muted }, t);
+  kinetic('тем же цветом и на том же месте', 1293, 608, { px: 27, w: 500, start: 29.9, stagger: .007, color: C.muted }, t);
+}
+
+/* ---------- 6. видео целиком ---------- */
+function videoScene(lt) {
+  const t = lt + SC.video[0];
+  kinetic('целое видео?', 960, 200, { px: 84, start: 34.2, ls: -3, align: 'center' }, t);
+  kinetic('сохраните уже с переводом и звуком', 960, 262, { px: 32, w: 500, start: 34.6, stagger: .01, align: 'center', color: C.muted }, t);
+  // плёнка из кадров
+  const fw = 440, fh = 248, gap = 28, y = 360;
+  const shift = (t - 34) * 140;
+  for (let i = -1; i < 6; i++) {
+    const x = 120 + i * (fw + gap) - (shift % (fw + gap));
+    const done = (x + fw / 2) < 120 + (W - 240) * eIO(prog(t, 34.4, 37.0));
+    gs(1); ctx.fillStyle = '#000'; rr(x - 10, y - 30, fw + 20, fh + 60, 14); ctx.fill();
+    for (let k = 0; k < 7; k++) { ctx.fillStyle = '#26262b'; rr(x + 10 + k * 62, y - 22, 34, 12, 3); ctx.fill(); rr(x + 10 + k * 62, y + fh + 12, 34, 12, 3); ctx.fill(); }
+    const keep = SA; cityScene(30 + i * 3 + Math.floor(shift / (fw + gap)) * 3, x, y, fw, fh, done ? '' : SUBS[(i + 8) % 4][2]); SA = keep;
+    if (done) {
+      font(600, 17); const s = SUBS[(i + 8) % 4][3]; const tw = ctx.measureText(s).width;
+      gs(1); ctx.fillStyle = 'rgba(12,12,14,.95)'; rr(x + fw / 2 - tw / 2 - 12, y + fh - 46, tw + 24, 30, 9); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(s, x + fw / 2, y + fh - 25);
+    }
+  }
+  // прогресс
+  const p = eIO(prog(t, 34.4, 37.0));
+  gs(1); ctx.fillStyle = 'rgba(255,255,255,.1)'; rr(360, 720, 1200, 10, 5); ctx.fill();
+  ctx.fillStyle = C.red; glow(20); rr(360, 720, 1200 * p, 10, 5); ctx.fill(); noGlow();
+  font(600, 24); ctx.textAlign = 'right'; ctx.fillStyle = C.muted; ctx.fillText(`${Math.round(p * 100)}%`, 1560, 770);
+  ctx.textAlign = 'left'; ctx.fillText(p < 1 ? 'ищу субтитры и надписи, перевожу…' : 'готово', 360, 770);
+  // файлы
+  [['фильм (перевод ru).mp4', 'видео со звуком', 37.2], ['фильм (перевод ru).srt', 'субтитры для плеера', 37.45]].forEach(([n, d, at], i) => {
+    const q = spring(prog(t, at, at + .7)); if (q <= 0) return;
+    const x = 560 + i * 420, yy = 830;
+    ctx.save(); ctx.translate(x + 190, yy + 50); ctx.scale(q, q); ctx.translate(-(x + 190), -(yy + 50));
+    glassCard(x, yy, 380, 100, 22, Math.min(1, q));
+    gs(1); ctx.fillStyle = i ? 'rgba(255,255,255,.12)' : C.red; rr(x + 20, yy + 22, 56, 56, 14); ctx.fill();
+    font(800, 20); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(i ? 'srt' : 'mp4', x + 48, yy + 57);
+    ctx.textAlign = 'left'; font(700, 22); ctx.fillStyle = C.ink; ctx.fillText(n, x + 96, yy + 46);
+    font(500, 19); ctx.fillStyle = C.muted; ctx.fillText(d, x + 96, yy + 74);
+    ctx.restore();
+  });
+}
+
+/* ---------- 7. факты ---------- */
+const LANGROLL = ['английский', 'японский', 'испанский', 'корейский', 'немецкий', 'китайский', 'арабский', 'французский', 'турецкий', 'хинди', 'итальянский', 'польский'];
+function factsScene(lt) {
+  const t = lt + SC.facts[0];
+  const items = [[39.4, 41.05, '112', 'языков'], [41.05, 42.65, 'без', 'интернета'], [42.65, 43.95, 'озвучка', 'любого перевода'], [43.95, 45.3, 'словарик', 'и карточки для заучивания']];
+  for (const [a, b, big, small] of items) {
+    if (t < a - .05 || t > b + .1) continue;
+    const pin = eExpo(prog(t, a, a + .35)), pout = eIn(prog(t, b - .15, b + .1));
+    const s = 1.25 - .25 * pin + pout * .15;
+    ctx.save(); ctx.translate(960, 520); ctx.scale(s, s);
+    gs(pin * (1 - pout)); font(900, 250); ctx.textAlign = 'center'; ctx.letterSpacing = '-10px';
+    ctx.fillStyle = big === '112' ? C.red : C.ink; if (big === '112') glow(60);
+    ctx.fillText(big, 0, 60); noGlow(); ctx.letterSpacing = '0px';
+    font(600, 52); ctx.fillStyle = C.muted; ctx.fillText(small, 0, 160);
+    ctx.restore();
+    // фоновые мотивы
+    if (big === '112') {
+      for (let i = 0; i < 12; i++) {
+        const yy = 150 + i * 70, dir = i % 2 ? 1 : -1;
+        font(700, 40); ctx.textAlign = 'left'; gs(.07 * pin * (1 - pout)); ctx.fillStyle = C.ink;
+        const line = LANGROLL.slice(i % 6).concat(LANGROLL).join('   ·   ');
+        ctx.fillText(line, -400 + dir * (t - a) * 160 - (i % 3) * 200, yy);
+      }
+    } else if (big === 'озвучка') {
+      gs(.5 * pin * (1 - pout)); ctx.fillStyle = C.red;
+      for (let i = 0; i < 48; i++) { const hh = 20 + Math.abs(Math.sin(t * 9 + i * .7)) * 120 * (.4 + .6 * rnd(i)); rr(960 - 48 * 14 / 2 + i * 14, 860 - hh / 2, 7, hh, 3.5); ctx.fill(); }
+    } else if (big === 'словарик') {
+      const f = eIO(prog(t, a + .25, a + .75));
+      for (const [dx, rot, front, back] of [[-560, -.12, 'run', 'бегать'], [560, .1, 'light', 'свет']]) {
+        ctx.save(); ctx.translate(960 + dx, 560); ctx.rotate(rot); ctx.scale(Math.abs(Math.cos(f * Math.PI)) || .01, 1);
+        gs(.85 * pin * (1 - pout)); ctx.fillStyle = 'rgba(255,255,255,.07)'; rr(-150, -100, 300, 200, 24); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 2; ctx.stroke();
+        font(800, 52); ctx.textAlign = 'center'; ctx.fillStyle = f < .5 ? C.ink : C.red; ctx.fillText(f < .5 ? front : back, 0, 18);
+        ctx.restore();
+      }
+    } else if (big === 'без') {
+      gs(.12 * pin * (1 - pout)); ctx.strokeStyle = C.ink; ctx.lineWidth = 18; ctx.lineCap = 'round';
+      for (let k = 1; k <= 3; k++) { ctx.beginPath(); ctx.arc(960, 1060, k * 110, -Math.PI * .8, -Math.PI * .2); ctx.stroke(); }
+      gs(.6 * pin * (1 - pout)); ctx.strokeStyle = C.red; ctx.beginPath(); ctx.moveTo(830, 760); ctx.lineTo(1090, 1010); ctx.stroke();
+    }
+  }
+  // все четыре вместе
+  const all = prog(t, 45.3, 45.6);
+  if (all > 0) {
+    const pills = ['112 языков', 'без интернета', 'озвучка', 'словарик'];
+    font(700, 40); const ws = pills.map(p => ctx.measureText(p).width + 64);
+    let x = 960 - (ws.reduce((a, b) => a + b, 0) + 24 * 3) / 2;
+    pills.forEach((p, i) => {
+      const q = spring(prog(t, 45.3 + i * .06, 45.9 + i * .06));
+      gs(Math.min(1, q)); ctx.fillStyle = i ? 'rgba(255,255,255,.08)' : C.red; rr(x, 500 + 30 * (1 - q), ws[i], 84, 42); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; font(700, 40); ctx.fillText(p, x + ws[i] / 2, 556 + 30 * (1 - q));
+      x += ws[i] + 24;
+    });
+  }
+}
+
+/* ---------- 8. финал ---------- */
+function endScene(lt) {
+  const t = lt + SC.end[0];
+  const p = eOut(prog(t, 46.0, 46.9));
+  towerDraw(960, 640 - 30 * (1 - p), 470, 1, eOut(prog(t, 46.2, 46.8)) * (0.85 + .15 * Math.sin(t * 3)), t);
+  kinetic('вавилон', 960, 800, { px: 150, start: 46.6, ls: -5, align: 'center', stagger: .04 }, t);
+  kinetic('один язык для всего экрана', 960, 880, { px: 44, w: 600, start: 47.2, align: 'center', stagger: .015, color: C.red, glow: 20 }, t);
+  kinetic('babylon · windows 10 и 11 · бесплатно', 960, 950, { px: 26, w: 500, start: 48.0, align: 'center', stagger: .008, color: C.muted }, t);
+}
+
+/* ---------- кадр ---------- */
+function draw(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  backdrop(t, t > SC.live[0] + .6 && t < SC.live[1] ? 0 : 1);
+  const run = (key, fn, o) => stage(t, SC[key], (lt, a) => { SA = a; fn(lt); SA = 1; }, o);
+  run('hook', hook, { zin: 1.0, noFadeIn: true });
+  run('tower', tower, { zin: 1.0, in: .3 });
+  run('select', selectScene);
+  run('live', liveScene, { zin: 1.0, in: .2 });
+  run('photo', photoScene);
+  run('video', videoScene);
+  run('facts', factsScene, { zin: 1.0 });
+  run('end', endScene, { zin: 1.0, out: .01 });
+  // красная «шторка» на переходах к главным сценам
+  for (const at of [10.5, 17.5, 27.5, 39.0]) {
+    const p = prog(t, at - .25, at + .25);
+    if (p > 0 && p < 1) {
+      const x = lerp(-300, W + 300, eIO(p));
+      ctx.globalAlpha = .9; ctx.fillStyle = C.red; glow(60);
+      ctx.beginPath(); ctx.moveTo(x - 120, 0); ctx.lineTo(x + 40, 0); ctx.lineTo(x - 80, H); ctx.lineTo(x - 240, H); ctx.fill(); noGlow();
+    }
+  }
+  finish(t);
+  const fade = prog(t, 51.2, 52);
+  if (fade > 0) { ctx.globalAlpha = fade; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+  const fin = 1 - prog(t, 0, .35);
+  if (fin > 0) { ctx.globalAlpha = fin; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = 1;
+}
+window.draw = draw;
+// просмотр в браузере: ?t=12 — кадр, иначе проигрывание
+const q = new URLSearchParams(location.search);
+window.ready.then(() => {
+  if (q.has('render')) return;
+  if (q.has('t')) { draw(+q.get('t')); return; }
+  const t0 = performance.now();
+  const loop = () => { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+});
+</script>
+<script src="music.js"></script>

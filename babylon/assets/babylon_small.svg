@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#191919"/><stop offset="1" stop-color="#040404"/></linearGradient>
+<linearGradient id="cyl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cfcfcf"/><stop offset=".22" stop-color="#ffffff"/><stop offset=".55" stop-color="#e6e6e6"/><stop offset="1" stop-color="#7d7d7d"/></linearGradient>
+<linearGradient id="top" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f2f2f2"/><stop offset="1" stop-color="#a9a9a9"/></linearGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#ff3b3b" stop-opacity=".6"/><stop offset=".4" stop-color="#ff3b3b" stop-opacity=".18"/><stop offset="1" stop-color="#ff3b3b" stop-opacity="0"/></radialGradient>
+<clipPath id="sq"><rect x="2" y="2" width="252" height="252" rx="58"/></clipPath>
+</defs>
+<rect x="2" y="2" width="252" height="252" rx="58" fill="url(#bg)"/>
+<g clip-path="url(#sq)"></g>
+<g clip-path="url(#sq)"><path d="M68.00 232.00 A60.00 9.60 0 0 0 188.00 232.00 L187.31 194.00 A59.31 9.49 0 0 1 68.69 194.00 Z" fill="url(#cyl)"/>
+<path d="M68.69 194.00 A59.31 9.49 0 0 0 187.31 194.00" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="4.18" transform="translate(0 2.28)"/>
+<ellipse cx="128" cy="194.00" rx="59.31" ry="9.49" fill="url(#top)" data-ledge="1"/>
+<path d="M72.57 194.00 A55.43 8.87 0 0 0 183.43 194.00 L177.38 156.00 A49.38 7.90 0 0 1 78.62 156.00 Z" fill="url(#cyl)"/>
+<path d="M78.62 156.00 A49.38 7.90 0 0 0 177.38 156.00" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="4.18" transform="translate(0 2.28)"/>
+<ellipse cx="128" cy="156.00" rx="49.38" ry="7.90" fill="url(#top)" data-ledge="1"/>
+<path d="M81.85 156.00 A46.15 7.38 0 0 0 174.15 156.00 L163.84 118.00 A35.84 5.73 0 0 1 92.16 118.00 Z" fill="url(#cyl)"/>
+<path d="M92.16 118.00 A35.84 5.73 0 0 0 163.84 118.00" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="4.18" transform="translate(0 2.28)"/>
+<ellipse cx="128" cy="118.00" rx="35.84" ry="5.73" fill="url(#top)" data-ledge="1"/>
+<path d="M94.51 118.00 A33.49 5.36 0 0 0 161.49 118.00 L147.26 80.00 A19.26 3.08 0 0 1 108.74 80.00 Z" fill="url(#cyl)"/>
+<path d="M108.74 80.00 A19.26 3.08 0 0 0 147.26 80.00" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="4.18" transform="translate(0 2.28)"/>
+<ellipse cx="128" cy="80.00" rx="19.26" ry="3.08" fill="url(#top)"/></g>
+<rect x="2.5" y="2.5" width="251" height="251" rx="57.5" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="4"/>
+<circle cx="128" cy="49.9" r="23" fill="#ff3b3b"/>
+</svg>

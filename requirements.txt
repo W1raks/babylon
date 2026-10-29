@@ -1,0 +1,18 @@
+PySide6-Essentials>=6.7
+ctranslate2>=4.3
+sentencepiece>=0.2
+py3langid>=0.3
+numpy>=1.24
+imageio-ffmpeg>=0.5
+tokenizers>=0.15
+soundcard>=0.4.3
+python-docx>=1.1
+pymupdf>=1.26,<1.27
+winrt-runtime>=2.3; sys_platform == "win32"
+winrt-Windows.Foundation>=2.3; sys_platform == "win32"
+winrt-Windows.Foundation.Collections>=2.3; sys_platform == "win32"
+winrt-Windows.Globalization>=2.3; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging>=2.3; sys_platform == "win32"
+winrt-Windows.Media.Ocr>=2.3; sys_platform == "win32"
+winrt-Windows.Media.SpeechSynthesis>=2.3; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=2.3; sys_platform == "win32"

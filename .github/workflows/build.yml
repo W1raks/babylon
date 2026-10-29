@@ -1,0 +1,121 @@
+# Проверки и сборка Вавилона на Windows. Тег vX.Y.Z → выпуск с архивом Babylon-X.Y.Z-win64.zip.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Библиотеки
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pyinstaller
+      - name: Модели для проверок (en ⇄ ru и whisper base)
+        env:
+          BABYLON_WHISPER: ${{ runner.temp }}\whisper
+        shell: python
+        run: |
+          import os, sys
+          sys.path.insert(0, ".")
+          from babylon import asr, models
+          d = os.path.join(os.environ["RUNNER_TEMP"], "models")
+          cat = models.catalog()
+          for pair in (("en", "ru"), ("ru", "en")):
+              models.install_pair(d, *pair, cat[pair])
+          asr.download("base")
+      - name: Проверки
+        env:
+          BABYLON_MODELS: ${{ runner.temp }}\models
+          BABYLON_WHISPER: ${{ runner.temp }}\whisper
+          QT_QPA_PLATFORM: offscreen
+          PYTHONIOENCODING: utf-8
+        run: python -m pytest tests -q --ignore=tests/test_windows.py
+      - name: Проверки на Windows (клавиши, OCR, голос, субтитры, речь)
+        env:
+          BABYLON_MODELS: ${{ runner.temp }}\models
+          BABYLON_WHISPER: ${{ runner.temp }}\whisper
+          PYTHONIOENCODING: utf-8
+        run: |
+          New-Item -ItemType Directory -Force winshots | Out-Null
+          python -m pytest tests/test_windows.py -q -s
+      - name: Сборка
+        run: pyinstaller --noconfirm babylon.spec
+      - name: Самопроверка собранной программы
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\Babylon\Babylon.exe -ArgumentList "--selftest" -WorkingDirectory dist\Babylon -PassThru
+          if (-not $p.WaitForExit(90000)) { throw 'самопроверка не завершилась' }
+          Get-Content dist\Babylon\babylon-selftest.txt -Encoding utf8
+          if (-not (Select-String -Path dist\Babylon\babylon-selftest.txt -Pattern "selftest ok" -Quiet)) { exit 1 }
+          Remove-Item dist\Babylon\babylon-selftest.txt
+      - name: Архив с номером версии
+        id: pack
+        shell: pwsh
+        run: |
+          $v = (Get-Content build\version.txt).Trim()
+          if ($env:GITHUB_REF -like 'refs/tags/v*' -and $env:GITHUB_REF_NAME -ne "v$v") { throw "тег $env:GITHUB_REF_NAME не совпадает с версией $v" }
+          Compress-Archive -Path dist\Babylon -DestinationPath "Babylon-$v-win64.zip"
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Обновление с прошлого выпуска кнопкой
+        timeout-minutes: 4
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $t = $env:RUNNER_TEMP
+          $v = "${{ steps.pack.outputs.version }}"
+          gh release download --repo $env:GITHUB_REPOSITORY --pattern "Babylon-*-win64.zip" --dir "$t\prev" 2>$null
+          $prev = Get-ChildItem "$t\prev\*.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $prev) { 'прошлых выпусков пока нет — пропускаю'; exit 0 }
+          Expand-Archive $prev.FullName "$t\old"
+          $app = "$t\old\Babylon"
+          New-Item -ItemType Directory "$app\data" | Out-Null
+          'keep' | Out-File "$app\data\keep.txt"
+          "$($prev.Name) -> $v"
+          $st = "$app\babylon-selftest.txt"
+          $p = Start-Process "$app\Babylon.exe" -ArgumentList '--update-from', "$PWD\Babylon-$v-win64.zip", '--then', '--selftest' -WorkingDirectory $app -PassThru
+          if (-not $p.WaitForExit(60000)) { 'не завершилась за минуту' }
+          for ($i = 0; $i -lt 120 -and -not ((Test-Path $st) -and (Select-String -Path $st -Pattern 'selftest ok' -Quiet)); $i++) { Start-Sleep 1 }
+          if ((Get-Content "$app\_internal\version.txt") -ne $v) { throw "не обновилась до $v" }
+          if (-not (Test-Path "$app\data\keep.txt")) { throw 'папка data пропала' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Babylon-${{ steps.pack.outputs.version }}-win64
+          path: Babylon-${{ steps.pack.outputs.version }}-win64.zip
+          retention-days: 30
+      - name: Что нового (из CHANGELOG.md)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: python
+        run: |
+          import re
+          v = "${{ steps.pack.outputs.version }}"
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## {re.escape(v)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          notes = (m.group(1).strip() if m else "") + "\n\n**Установка:** скачайте архив ниже, распакуйте и запустите `Babylon\\Babylon.exe`. Если Вавилон уже стоит — он сам предложит обновиться."
+          open("release-notes.md", "w", encoding="utf-8").write(notes)
+      - name: Ролик к выпуску
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: Copy-Item docs\promo.mp4 Babylon-promo.mp4
+      - name: Выпуск
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Вавилон ${{ steps.pack.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            Babylon-${{ steps.pack.outputs.version }}-win64.zip
+            Babylon-promo.mp4
